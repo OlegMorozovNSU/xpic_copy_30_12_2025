@@ -91,6 +91,8 @@ protected:
   /// @brief Whether the new cells have been added into `indices_map`.
   PetscInt indices_assembled = false;
 
+  std::vector<PetscReal> conv_hist;
+
   PetscClassId classid;
   PetscLogEvent events[1];
   PetscLogStage stagenums[6];

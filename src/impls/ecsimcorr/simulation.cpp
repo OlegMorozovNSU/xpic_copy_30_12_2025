@@ -119,6 +119,8 @@ PetscErrorCode Simulation::init_ksp_solvers()
     {"correct", correct},
   };
 
+  conv_hist.resize(ecsim::maxit);
+
   for (auto&& [name, ksp] : map) {
     PetscCall(KSPCreate(PETSC_COMM_WORLD, &ksp));
     PetscCall(PetscObjectSetName((PetscObject)ksp, name.c_str()));
@@ -126,6 +128,7 @@ PetscErrorCode Simulation::init_ksp_solvers()
 
     PetscCall(KSPSetErrorIfNotConverged(ksp, PETSC_TRUE));
     PetscCall(KSPSetTolerances(ksp, ecsim::rtol, ecsim::atol, ecsim::divtol, ecsim::maxit));
+    PetscCall(KSPSetResidualHistory(ksp, conv_hist.data(), ecsim::maxit, PETSC_TRUE));
     PetscCall(KSPSetFromOptions(ksp));
   }
 

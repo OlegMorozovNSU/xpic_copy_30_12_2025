@@ -274,6 +274,14 @@ PetscErrorCode Simulation::advance_fields(KSP ksp, Vec curr, Vec out)
   PetscCall(PetscObjectGetName((PetscObject)ksp, &name));
   LOG("  KSPSolve() has finished for \"{}\", KSPConvergedReasonView():", name);
   PetscCall(KSPConvergedReasonView(ksp, PETSC_VIEWER_STDOUT_WORLD));
+
+  PetscInt len;
+  PetscCall(KSPGetResidualHistory(ksp, NULL, &len));
+  LOG("  Residual history for this solution:");
+
+  for (PetscInt i = 0; i < len; ++i) {
+    LOG("    {:2d} KSP Residual norm {:e}", i, conv_hist[i]);
+  }
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -558,9 +566,12 @@ PetscErrorCode Simulation::init_matrices()
 PetscErrorCode Simulation::init_ksp_solvers()
 {
   PetscFunctionBeginUser;
+  conv_hist.resize(maxit);
+
   PetscCall(KSPCreate(PETSC_COMM_WORLD, &ksp));
   PetscCall(KSPSetErrorIfNotConverged(ksp, PETSC_TRUE));
   PetscCall(KSPSetTolerances(ksp, rtol, atol, divtol, maxit));
+  PetscCall(KSPSetResidualHistory(ksp, conv_hist.data(), maxit, PETSC_TRUE));
   PetscCall(KSPSetFromOptions(ksp));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
