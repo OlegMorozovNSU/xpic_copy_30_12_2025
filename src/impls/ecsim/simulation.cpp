@@ -560,7 +560,6 @@ PetscErrorCode Simulation::init_ksp_solvers()
   PetscFunctionBeginUser;
   PetscCall(KSPCreate(PETSC_COMM_WORLD, &ksp));
   PetscCall(KSPSetErrorIfNotConverged(ksp, PETSC_TRUE));
-  PetscCall(KSPSetReusePreconditioner(ksp, PETSC_TRUE));
   PetscCall(KSPSetTolerances(ksp, rtol, atol, divtol, maxit));
   PetscCall(KSPSetFromOptions(ksp));
   PetscFunctionReturn(PETSC_SUCCESS);

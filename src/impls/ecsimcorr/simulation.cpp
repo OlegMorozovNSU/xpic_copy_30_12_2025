@@ -125,7 +125,6 @@ PetscErrorCode Simulation::init_ksp_solvers()
     PetscCall(KSPSetOptionsPrefix(ksp, (name + "_").c_str()));
 
     PetscCall(KSPSetErrorIfNotConverged(ksp, PETSC_TRUE));
-    PetscCall(KSPSetReusePreconditioner(ksp, PETSC_TRUE));
     PetscCall(KSPSetTolerances(ksp, ecsim::rtol, ecsim::atol, ecsim::divtol, ecsim::maxit));
     PetscCall(KSPSetFromOptions(ksp));
   }
