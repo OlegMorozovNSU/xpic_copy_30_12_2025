@@ -268,11 +268,12 @@ PetscErrorCode Particles::form_iteration()
           auto&& rsn = coords[s - 0];
           util.decomposition_J(rsn, rs0, Vp.elementwise_division(pos), qn_over_Np);
         }
-  #endif
+        util.decomposition_M(curr.r, curr.mu_p * n_Np(curr));
+        correct_coordinates(curr);
       }
-      util.decomposition_M(curr.r, curr.mu_p * n_Np(curr));
       ++i;
     }
+  #endif
   }
 
   PetscCall(DMDAVecRestoreArrayWrite(da, J_loc, &J_arr));

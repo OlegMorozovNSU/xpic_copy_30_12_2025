@@ -76,9 +76,17 @@ PetscErrorCode Simulation::initialize_implementation()
   PetscCall(rotor.create_negative(&rotB));
   PetscCall(MatScale(rotB, -1)); /// @see `Simulation::form_function()`
 
-  PetscCall(DMDACreate3d(PETSC_COMM_WORLD, REP3_A(world.bounds), world.st,
-    REP3_A(Geom_n), REP3_A(world.procs), 6, world.s, REP3_A(world.lg), &da_EB));
+  PetscInt gn[3];
+  PetscInt procs[3];
+  PetscInt s;
+  DMBoundaryType bounds[3];
+  DMDAStencilType st;
+  PetscCall(DMDAGetInfo(da, NULL, REP3_A(&gn), REP3_A(&procs), NULL, &s, REP3_A(&bounds), &st));
 
+  const PetscInt* lgn[3];
+  PetscCall(DMDAGetOwnershipRanges(da, REP3_A(&lgn)));
+
+  PetscCall(DMDACreate3d(PETSC_COMM_WORLD, REP3_A(bounds), st, REP3_A(gn), REP3_A(procs), 6, st, REP3_A(lgn), &da_EB));
   PetscCall(DMSetUp(da_EB));
 
   PetscCall(DMCreateGlobalVector(da_EB, &sol));
@@ -133,9 +141,11 @@ PetscErrorCode Simulation::timestep_implementation(PetscInt t)
   for (auto& sort : particles_)
     PetscCall(sort->prepare_storage());
 
+  LOG("to_snes():");
   /// @note Solution is initialized with guess before it is passed into `SNESSolve()`.
   /// The simplest choice is: (E^{n+1/2, k=0}, B^{n+1/2, k=0}) = (E^{n}, B^{n}).
   PetscCall(to_snes(E, B, sol));
+  LOG("to_snes() has finished, SNESSolve():");
   PetscCall(SNESSolve(snes, NULL, sol));
 
   LOG("SNESSolve() has finished, SNESConvergedReasonView():");
@@ -163,9 +173,11 @@ PetscErrorCode Simulation::form_iteration(
 {
   PetscFunctionBeginUser;
   auto* simulation = (Simulation*)ctx;
+  LOG("from_snes():");
   PetscCall(simulation->from_snes(vx, simulation->E_hk, simulation->B_hk));
+  LOG("from_snes() has finished, prepare_dBdr():");
   PetscCall(simulation->prepare_dBdr());
-
+  LOG("prepare_dBdr() has finished, form_current():");
   PetscCall(simulation->form_current());
   PetscCall(simulation->form_function(vf));
   PetscFunctionReturn(PETSC_SUCCESS);
@@ -257,7 +269,7 @@ PetscErrorCode Simulation::from_snes(Vec v, Vec vE, Vec vB)
   const PetscReal**** arr_v;
   PetscCall(DMDAVecGetArrayWrite(da, vE, &E_arr));
   PetscCall(DMDAVecGetArrayWrite(da, vB, &B_arr));
-  PetscCall(DMDAVecGetArrayRead(da_EB, v, &arr_v));
+  PetscCall(DMDAVecGetArrayDOFRead(da_EB, v, &arr_v));
 
 #pragma omp parallel for simd
   for (PetscInt g = 0; g < world.size.elements_product(); ++g) {
@@ -274,7 +286,7 @@ PetscErrorCode Simulation::from_snes(Vec v, Vec vE, Vec vB)
     B_arr[z][y][x][Z] = arr_v[z][y][x][5];
   }
 
-  PetscCall(DMDAVecRestoreArrayRead(da_EB, v, &arr_v));
+  PetscCall(DMDAVecRestoreArrayDOFRead(da_EB, v, &arr_v));
   PetscCall(DMDAVecRestoreArrayWrite(da, E_hk, &E_arr));
   PetscCall(DMDAVecRestoreArrayWrite(da, B_hk, &B_arr));
   PetscFunctionReturn(PETSC_SUCCESS);
@@ -286,14 +298,13 @@ PetscErrorCode Simulation::to_snes(Vec vE, Vec vB, Vec v)
   PetscReal**** arr_v;
   PetscCall(DMDAVecGetArrayRead(da, vE, &E_arr));
   PetscCall(DMDAVecGetArrayRead(da, vB, &B_arr));
-  PetscCall(DMDAVecGetArrayWrite(da_EB, v, &arr_v));
+  PetscCall(DMDAVecGetArrayDOFWrite(da_EB, v, &arr_v));
 
 #pragma omp parallel for simd
   for (PetscInt g = 0; g < world.size.elements_product(); ++g) {
     PetscInt x = world.start[X] + g % world.size[X];
     PetscInt y = world.start[Y] + (g / world.size[X]) % world.size[Y];
     PetscInt z = world.start[Z] + (g / world.size[X]) / world.size[Y];
-
     arr_v[z][y][x][0] = E_arr[z][y][x][X];
     arr_v[z][y][x][1] = E_arr[z][y][x][Y];
     arr_v[z][y][x][2] = E_arr[z][y][x][Z];
@@ -303,7 +314,7 @@ PetscErrorCode Simulation::to_snes(Vec vE, Vec vB, Vec v)
     arr_v[z][y][x][5] = B_arr[z][y][x][Z];
   }
 
-  PetscCall(DMDAVecRestoreArrayWrite(da_EB, v, &arr_v));
+  PetscCall(DMDAVecRestoreArrayDOFWrite(da_EB, v, &arr_v));
   PetscCall(DMDAVecRestoreArrayRead(da, E_hk, &E_arr));
   PetscCall(DMDAVecRestoreArrayRead(da, B_hk, &B_arr));
   PetscFunctionReturn(PETSC_SUCCESS);
