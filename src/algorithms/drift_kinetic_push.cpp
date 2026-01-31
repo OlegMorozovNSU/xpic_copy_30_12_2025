@@ -49,18 +49,6 @@ void DriftKineticPush::process(
   PetscReal dt, PointByField& pn, const PointByField& p0)
 {
   pre_step(pn, p0);
-  
-#if 0
-  LOG("=== DriftKineticPush::process START ===");
-  LOG("dt = {}", dt);
-  LOG("p0.r = {}", p0.r);
-  LOG("p0.p_parallel = {}", p0.p_parallel);
-  LOG("p0.p_perp = {}", p0.p_perp);
-  LOG("p0.mu_p = {}", p0.mu_p);
-  LOG("B0 = {}, |B0| = {}", Bh, Bh.length());
-  LOG("mp = {}, qm = {}", mp, qm);
-  LOG("Eh = {}", Eh);
-#endif
 
   PetscAssertAbort((bool)set_fields, PETSC_COMM_WORLD, PETSC_ERR_USER,
     "DriftKineticPush::set_fields have to be specified");
@@ -69,13 +57,12 @@ void DriftKineticPush::process(
   for (it = 0; it < maxit; ++it) {
     update_Vp(pn, p0);
 
-    //std::cout << it;
+#if 0 
+    LOG("it = {}", it);
+#endif
 
     if (check_discrepancy(dt, pn, p0) && it) {
       update_v_perp(pn, p0);
-      //std::cout << it << ":" << Eh << " " << Bh << " " << B0 << " " << Bn <<std::endl;
-      //std::cout << " " << gradBh << " " << pn.r << " "<< p0.r <<std::endl; 
-      //std::cin >> it;
       return;
     }
 
@@ -107,7 +94,6 @@ Vector3R DriftKineticPush::get_Vd(const PointByField& p0) const
 bool DriftKineticPush::check_discrepancy(PetscReal dt, const PointByField& pn, const PointByField& p0){
   R1 = get_residue_r(dt, pn, p0);
   R2 = get_residue_v(dt, pn, p0);
-  //std::cout << R1 << " " << R2 << std::endl;
   return (R1 < eps) && (R2 < delta);
 }
 
@@ -151,10 +137,28 @@ PetscReal DriftKineticPush::get_v_parallel(const PointByField& p0) const {
 void DriftKineticPush::update_fields(const PointByField& pn, const PointByField& p0) {
   Vector3R E0, gradB0;
   Vector3R En, gradBn;
+  #if 1
   set_fields(p0.r, p0.r, E0, B0, gradB0);
   set_fields(p0.r, pn.r, En, Bn, gradBn);
   set_fields(p0.r, 0.5 * (p0.r + pn.r), Eh, Bh, gradBh);
+  #endif
+  #if 0
+  B0 = Vector3R(0.,0.,1.);
+  Bn = Vector3R(0.,0.,1.);
+  Bh = Vector3R(0.,0.,1.);
+  En = Vector3R(0.,0.,0.);
+  gradBh = Vector3R(0.,0.,0.);
+  #endif
   meanB = 0.5 * (Bn + B0);
   bh = Bh.normalized(), bn = Bn.normalized(), b0 = B0.normalized();
   lenBh = Bh.length();
+  #if 1
+  LOG("update_fields:");
+  LOG("p0.x = {}, p0.y = {}, p0.z = {}", p0.r.x(), p0.r.y(), p0.r.z());
+  LOG("pn.x = {}, pn.y = {}, pn.z = {}", pn.r.x(), pn.r.y(), pn.r.z());
+  LOG("Eh.x = {}, Eh.y = {}, Eh.z = {}", Eh.x(), Eh.y(), Eh.z());
+  LOG("Bh.x = {}, Bh.y = {}, Bh.z = {}", Bh.x(), Bh.y(), Bh.z());
+  LOG("gradBh.x = {}, gradBh.y = {}, gradBh.z = {}", gradBh.x(), gradBh.y(), gradBh.z());
+  LOG("lenBh = {}", lenBh);
+  #endif
 }

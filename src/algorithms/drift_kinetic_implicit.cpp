@@ -156,9 +156,9 @@ PetscErrorCode DriftKineticEsirkepov::interpolate_E(
 
   PetscInt shr = 2;
   Vector3I p_g{
-    (PetscInt)std::round(p_Rsn[X]) - shr,
-    (PetscInt)std::round(p_Rsn[Y]) - shr,
-    (PetscInt)std::round(p_Rsn[Z]) - shr,
+    (PetscInt)std::round(0.5 * (p_Rsn[X] + p_Rs0[X])) - shr,
+    (PetscInt)std::round(0.5 * (p_Rsn[Y] + p_Rs0[Y])) - shr,
+    (PetscInt)std::round(0.5 * (p_Rsn[Z] + p_Rs0[Z])) - shr,
   };
 
   PetscInt shw = 2 * shr + 1;
@@ -375,7 +375,7 @@ PetscErrorCode DriftKineticEsirkepov::decomposition_J(
     p_Rsn[Z] != p_Rs0[Z] ? p_Rsn[Z] - p_Rs0[Z] : 1.0,
   };
 
-  PetscInt shr = 2;
+  PetscInt shr = 1;
   PetscInt shw = 2 * shr + 1;
 
   Vector3I p_g{

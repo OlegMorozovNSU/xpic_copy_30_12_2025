@@ -179,6 +179,7 @@ PetscErrorCode Particles::form_iteration()
       FLOOR_STEP(r.y(), dy),
       FLOOR_STEP(r.z(), dz),
     };
+    
     PetscCheck(is_point_within_bounds(vg, world.start, world.size),
       PETSC_COMM_WORLD, PETSC_ERR_ARG_OUTOFRANGE,
       "drift_kinetic particle %s is outside local bounds: r=(%.6e %.6e %.6e) cell=(%d %d %d) start=(%d %d %d) size=(%d %d %d)",
@@ -199,8 +200,8 @@ PetscErrorCode Particles::form_iteration()
     PetscInt i = 0;
     for (auto& curr : dk_curr_storage[g]) {
       const auto& prev(prev_cell[i]);
-      PetscCall(check_bounds(prev.r, "prev"));
-      PetscCall(check_bounds(curr.r, "curr"));
+      //PetscCall(check_bounds(prev.r, "prev"));
+      //PetscCall(check_bounds(curr.r, "curr"));
 
       /// @todo this part should reuse the logic from:
       /// tests/drift_kinetic_push/drift_kinetic_push.h:620 implicit_test_utils::interpolation_test()
@@ -226,6 +227,9 @@ PetscErrorCode Particles::form_iteration()
           pos[Y] = pos[Y] != 0 ? pos[Y] / dy : (PetscReal)segments;
           pos[Z] = pos[Z] != 0 ? pos[Z] / dz : (PetscReal)segments;
 
+          //LOG("r0 = ({}, {}, {})", r0.x()/dx, r0.y()/dy, r0.z()/dz);
+          //LOG("rn = ({}, {}, {})", rn.x()/dx, rn.y()/dy, rn.z()/dz);
+
           util.interpolate(E_dummy, B_p, gradB_dummy, rn, r0);
 
           for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
@@ -241,15 +245,17 @@ PetscErrorCode Particles::form_iteration()
           gradB_p = gradB_p.elementwise_division(pos);
         });
 
-      for (PetscReal dtau = 0.0, tau = 0.0; tau < dt; tau += dtau) {
-        PetscReal dtx = process_bound((curr.x()-prev.x())/(dt - tau), curr.x(), xb, xe);
-        PetscReal dty = process_bound((curr.y()-prev.y())/(dt - tau), curr.y(), yb, ye);
-        PetscReal dtz = process_bound((curr.z()-prev.z())/(dt - tau), curr.z(), zb, ze);
+      for (PetscReal dtau = dt, tau = 0.0; tau < dt; tau += dtau) {
+        PetscReal dtx = process_bound((curr.x()-prev.x())/dtau, curr.x(), xb, xe);
+        PetscReal dty = process_bound((curr.y()-prev.y())/dtau, curr.y(), yb, ye);
+        PetscReal dtz = process_bound((curr.z()-prev.z())/dtau, curr.z(), zb, ze);
 
         dtau = std::min({dt - tau, dtx, dty, dtz});
 
+        LOG("dtau = {}", dtau);
         push.process(dtau, curr, prev);
 
+#if 1
         auto coords = cell_traversal_new(curr.r, prev.r);
         PetscInt segments = (PetscInt)coords.size() - 1;
         if (segments <= 0)
@@ -269,6 +275,7 @@ PetscErrorCode Particles::form_iteration()
           util.decomposition_J(rsn, rs0, Vp.elementwise_division(pos), qn_over_Np);
         }
         util.decomposition_M(curr.r, curr.mu_p * n_Np(curr));
+#endif
         correct_coordinates(curr);
       }
       ++i;
