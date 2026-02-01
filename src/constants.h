@@ -2,7 +2,7 @@
 #define SRC_CONSTANTS_H
 
 /// @todo Remove this constants and make the particle `Shape` a simpler concept
-#define PARTICLES_FORM_FACTOR 4
+#define PARTICLES_FORM_FACTOR 2
 
 #define RANDOM_SEED           false
 #define LOGGING               true

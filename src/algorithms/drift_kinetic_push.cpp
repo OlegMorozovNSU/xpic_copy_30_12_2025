@@ -57,9 +57,9 @@ void DriftKineticPush::process(
   for (it = 0; it < maxit; ++it) {
     update_Vp(pn, p0);
 
-#if 0 
-    LOG("it = {}", it);
-#endif
+    #if 0
+    LOG("Vp = ({}, {}, {})", Vp.x(), Vp.y(), Vp.z());
+    #endif
 
     if (check_discrepancy(dt, pn, p0) && it) {
       update_v_perp(pn, p0);
@@ -135,16 +135,16 @@ PetscReal DriftKineticPush::get_v_parallel(const PointByField& p0) const {
 }
 
 void DriftKineticPush::update_fields(const PointByField& pn, const PointByField& p0) {
-  Vector3R E0, gradB0;
-  Vector3R En, gradBn;
-  set_fields(p0.r, p0.r, E0, B0, gradB0);
-  set_fields(p0.r, pn.r, En, Bn, gradBn);
-  set_fields(p0.r, 0.5 * (p0.r + pn.r), Eh, Bh, gradBh);
+  Vector3R Edummy, gradBdummy;
+  #if 1
+  set_fields(p0.r, p0.r, Edummy, B0, gradBdummy);
+  set_fields(p0.r, pn.r, Eh, Bn, gradBh);
+  set_fields(p0.r, 0.5 * (p0.r + pn.r), Edummy, Bh, gradBdummy);
+  #endif
   #if 0
   B0 = Vector3R(0.,0.,1.);
   Bn = Vector3R(0.,0.,1.);
   Bh = Vector3R(0.,0.,1.);
-  En = Vector3R(0.,0.,0.);
   gradBh = Vector3R(0.,0.,0.);
   #endif
   meanB = 0.5 * (Bn + B0);
@@ -152,6 +152,7 @@ void DriftKineticPush::update_fields(const PointByField& pn, const PointByField&
   lenBh = Bh.length();
   #if 0
   LOG("update_fields:");
+  LOG("it = {}", it);
   LOG("p0.x = {}, p0.y = {}, p0.z = {}", p0.r.x(), p0.r.y(), p0.r.z());
   LOG("pn.x = {}, pn.y = {}, pn.z = {}", pn.r.x(), pn.r.y(), pn.r.z());
   LOG("Eh.x = {}, Eh.y = {}, Eh.z = {}", Eh.x(), Eh.y(), Eh.z());

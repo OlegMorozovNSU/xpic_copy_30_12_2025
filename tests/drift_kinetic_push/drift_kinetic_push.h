@@ -679,7 +679,7 @@ namespace implicit_test_utils {
 
       Vector3R pos = (rn - r0);
 
-      auto coords = cell_traversal_new(rn, r0);
+      auto coords = cell_traversal_old(rn, r0);
       PetscInt Nsegments = (PetscInt)coords.size() - 1;
 
       pos[X] = pos[X] != 0 ? pos[X] / dx : Nsegments;
@@ -713,7 +713,7 @@ namespace implicit_test_utils {
 
         Vector3R pos = (rn - r0);
 
-        auto coords = cell_traversal_new(rn, r0);
+        auto coords = cell_traversal_old(rn, r0);
         PetscInt Nsegments = (PetscInt)coords.size() - 1;
 
         pos[X] = pos[X] != 0 ? pos[X] : Nsegments;

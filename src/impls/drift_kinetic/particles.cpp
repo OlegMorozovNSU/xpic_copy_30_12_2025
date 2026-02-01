@@ -186,7 +186,7 @@ PetscErrorCode Particles::form_iteration()
       /// tests/drift_kinetic_push/drift_kinetic_push.h:620 implicit_test_utils::interpolation_test()
       DriftKineticPush push(q / m, m);
       push.set_fields_callback(
-        [&](const Vector3R& rn, const Vector3R& r0, Vector3R& E_p, Vector3R& B_p,
+        [&](const Vector3R& r0, const Vector3R& rn, Vector3R& E_p, Vector3R& B_p,
           Vector3R& gradB_p) {
           E_p = {};
           B_p = {};
@@ -196,6 +196,7 @@ PetscErrorCode Particles::form_iteration()
 
           Vector3R pos = (rn - r0);
           auto coords = cell_traversal_new(rn, r0);
+          coords = cell_traversal(rn, r0);
           PetscInt segments = (PetscInt)coords.size() - 1;
 
           if (segments <= 0) {
@@ -220,42 +221,43 @@ PetscErrorCode Particles::form_iteration()
           E_p = E_p.elementwise_division(pos);
           gradB_p = gradB_p.elementwise_division(pos);
         });
+      
+      //PetscReal v = std::sqrt((POW2(curr.p_parallel) + POW2(curr.p_perp)));
+      //Vector3R Vph(v, v, v);
 
       push.process(dt, curr, prev);
-      Vector3R Vp = (curr.r - prev.r) / dt;
+      Vector3R Vph = (curr.r - prev.r) / dt;
 
       for (PetscReal dtau = 0.0, tau = 0.0; tau < dt; tau += dtau) {
-        PetscReal dtx = process_bound(Vp.x(), curr.x(), xb, xe);
-        PetscReal dty = process_bound(Vp.y(), curr.y(), yb, ye);
-        PetscReal dtz = process_bound(Vp.z(), curr.z(), zb, ze);
+        PetscReal dtx = process_bound(Vph.x(), curr.x(), xb, xe);
+        PetscReal dty = process_bound(Vph.y(), curr.y(), yb, ye);
+        PetscReal dtz = process_bound(Vph.z(), curr.z(), zb, ze);
 
         dtau = std::min({dt - tau, dtx, dty, dtz});
 
-        if (dt - dtau >= PETSC_SMALL) {
+        if (dt-dtau >= PETSC_SMALL) {
           push.process(dtau, curr, prev);
-        }
-        auto coords = cell_traversal_new(curr.r, prev.r);
-        PetscInt segments = (PetscInt)coords.size() - 1;
-        if (segments <= 0) {
-          segments = 1;
+          Vph = (curr.r - prev.r) / dtau;
         }
 
-        Vector3R Vp = dtau > 0 ? (curr.r - prev.r) / dtau : Vector3R{};
-        const PetscReal qn_over_Np = qn_Np(curr);
+        PetscReal path = (curr.r - prev.r).length();
+        auto coords = cell_traversal(curr.r, prev.r);
 
-        Vector3R pos = (curr.r - prev.r);
-        pos[X] = pos[X] != 0 ? pos[X] / dx : (PetscReal)segments;
-        pos[Y] = pos[Y] != 0 ? pos[Y] / dy : (PetscReal)segments;
-        pos[Z] = pos[Z] != 0 ? pos[Z] / dz : (PetscReal)segments;
+        PetscReal a0 = qn_Np(curr);
+        PetscReal b0 = curr.mu_p * n_Np(curr);
 
         for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
           auto&& rs0 = coords[s - 1];
           auto&& rsn = coords[s - 0];
-          util.decomposition_J(rsn, rs0, Vp.elementwise_division(pos), qn_over_Np);
+          PetscReal a = a0 * (rsn - rs0).length() / path;
+          util.decomposition_J(rsn, rs0, Vph, a);
+
+          PetscReal b = b0 * (rsn - rs0).length() / path;
+          util.decomposition_M(rsn, b);
         }
-        util.decomposition_M(curr.r, curr.mu_p * n_Np(curr));
         correct_coordinates(curr);
       }
+
       ++i;
     }
   }

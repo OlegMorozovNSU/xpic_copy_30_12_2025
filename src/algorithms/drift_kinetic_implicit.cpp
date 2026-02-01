@@ -148,20 +148,26 @@ PetscErrorCode DriftKineticEsirkepov::interpolate_E(
     Rs0[Z] / dz,
   };
 
+  Vector3R p_Rsmid{
+    0.5 * (p_Rsn[X] + p_Rs0[X]),
+    0.5 * (p_Rsn[Y] + p_Rs0[Y]),
+    0.5 * (p_Rsn[Z] + p_Rs0[Z]),
+  };
+
   Vector3R p_dR{
     p_Rsn[X] != p_Rs0[X] ? p_Rsn[X] - p_Rs0[X] : 1.0,
     p_Rsn[Y] != p_Rs0[Y] ? p_Rsn[Y] - p_Rs0[Y] : 1.0,
     p_Rsn[Z] != p_Rs0[Z] ? p_Rsn[Z] - p_Rs0[Z] : 1.0,
   };
 
-  PetscInt shr = 2;
+  PetscInt shr = 1;
   Vector3I p_g{
-    (PetscInt)std::round(0.5 * (p_Rsn[X] + p_Rs0[X])) - shr,
-    (PetscInt)std::round(0.5 * (p_Rsn[Y] + p_Rs0[Y])) - shr,
-    (PetscInt)std::round(0.5 * (p_Rsn[Z] + p_Rs0[Z])) - shr,
+    (PetscInt)std::round(p_Rsmid[X]) - shr,
+    (PetscInt)std::round(p_Rsmid[Y]) - shr,
+    (PetscInt)std::round(p_Rsmid[Z]) - shr,
   };
 
-  PetscInt shw = 2 * shr + 1;
+  PetscInt shw = 3;
 
   for (PetscInt i = 0; i < POW3(shw); ++i) {
     PetscInt g_x = p_g[X] + i % shw;
@@ -250,14 +256,14 @@ PetscErrorCode DriftKineticEsirkepov::interpolate_gradB(
     (PetscInt)std::round(p_Rsmid[Z]),
   };
 
-  PetscInt shr = 2;
+  PetscInt shr = 1;
   Vector3I p_g{
     (PetscInt)std::round(p_Rsmid[X]) - shr,
     (PetscInt)std::round(p_Rsmid[Y]) - shr,
     (PetscInt)std::round(p_Rsmid[Z]) - shr,
   };
 
-  PetscInt shw = 2 * shr + 1;
+  PetscInt shw = 3;
 
   for (PetscInt i = 0; i < POW3(shw); ++i) {
     PetscInt g_x = p_g[X] + i % shw;
@@ -369,20 +375,20 @@ PetscErrorCode DriftKineticEsirkepov::decomposition_J(
     Rs0[Z] / dz,
   };
 
-  Vector3R p_dR{
-    p_Rsn[X] != p_Rs0[X] ? p_Rsn[X] - p_Rs0[X] : 1.0,
-    p_Rsn[Y] != p_Rs0[Y] ? p_Rsn[Y] - p_Rs0[Y] : 1.0,
-    p_Rsn[Z] != p_Rs0[Z] ? p_Rsn[Z] - p_Rs0[Z] : 1.0,
+  Vector3R p_Rsmid{
+    0.5 * (p_Rsn[X] + p_Rs0[X]),
+    0.5 * (p_Rsn[Y] + p_Rs0[Y]),
+    0.5 * (p_Rsn[Z] + p_Rs0[Z]),
   };
 
-  PetscInt shr = 2;
-  PetscInt shw = 2 * shr + 1;
-
+  PetscInt shr = 1;
   Vector3I p_g{
-    (PetscInt)std::floor(p_Rsn[X]) - shr,
-    (PetscInt)std::floor(p_Rsn[Y]) - shr,
-    (PetscInt)std::floor(p_Rsn[Z]) - shr,
+    (PetscInt)std::round(p_Rsmid[X]) - shr,
+    (PetscInt)std::round(p_Rsmid[Y]) - shr,
+    (PetscInt)std::round(p_Rsmid[Z]) - shr,
   };
+
+  PetscInt shw = 3;
 
   for (PetscInt i = 0; i < POW3(shw); ++i) {
     PetscInt g_x = p_g[X] + i % shw;
@@ -392,15 +398,15 @@ PetscErrorCode DriftKineticEsirkepov::decomposition_J(
     Vector3R J_p;
 
     // clang-format off
-    J_p[X] = q_p * Vp[X] * alpha * p_dR[X] *
+    J_p[X] = q_p * Vp[X] * alpha *
       sfunc1(g_x + 0.5 - 0.5 * (p_Rsn[X] + p_Rs0[X])) *
       acrossSEfunc(g_y - p_Rs0[Y], g_y - p_Rsn[Y], g_z - p_Rs0[Z], g_z - p_Rsn[Z]);
 
-    J_p[Y] = q_p * Vp[Y] * alpha * p_dR[Y] *
+    J_p[Y] = q_p * Vp[Y] * alpha *
       sfunc1(g_y + 0.5 - 0.5 * (p_Rsn[Y] + p_Rs0[Y])) *
       acrossSEfunc(g_z - p_Rs0[Z], g_z - p_Rsn[Z], g_x - p_Rs0[X], g_x - p_Rsn[X]);
 
-    J_p[Z] = q_p * Vp[Z] * alpha * p_dR[Z] *
+    J_p[Z] = q_p * Vp[Z] * alpha *
       sfunc1(g_z + 0.5 - 0.5 * (p_Rsn[Z] + p_Rs0[Z])) *
       acrossSEfunc(g_x - p_Rs0[X], g_x - p_Rsn[X], g_y - p_Rs0[Y], g_y - p_Rsn[Y]);
 
