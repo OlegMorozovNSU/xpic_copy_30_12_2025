@@ -2,6 +2,7 @@
 #include "src/algorithms/drift_kinetic_push.h"
 #include "src/algorithms/drift_kinetic_implicit.h"
 #include "src/impls/drift_kinetic/simulation.h"
+#include "src/impls/eccapfim/cell_traversal.h"
 #include "src/utils/geometries.h"
 #include "src/utils/utils.h"
 
@@ -173,41 +174,18 @@ PetscErrorCode Particles::form_iteration()
   DriftKineticEsirkepov util(E_arr, B_arr, J_arr, M_arr);
   util.set_dBidrj_precomputed(simulation_.dBdx_arr, simulation_.dBdy_arr, simulation_.dBdz_arr);
 
-  auto check_bounds = [&](const Vector3R& r, const char* label) {
-    Vector3I vg{
-      FLOOR_STEP(r.x(), dx),
-      FLOOR_STEP(r.y(), dy),
-      FLOOR_STEP(r.z(), dz),
-    };
-    
-    PetscCheck(is_point_within_bounds(vg, world.start, world.size),
-      PETSC_COMM_WORLD, PETSC_ERR_ARG_OUTOFRANGE,
-      "drift_kinetic particle %s is outside local bounds: r=(%.6e %.6e %.6e) cell=(%d %d %d) start=(%d %d %d) size=(%d %d %d)",
-      label, r.x(), r.y(), r.z(), REP3_A(vg), REP3_A(world.start), REP3_A(world.size));
-    return PETSC_SUCCESS;
-  };
-
-
-
+#pragma omp parallel for
   for (PetscInt g = 0; g < (PetscInt)dk_curr_storage.size(); ++g) {
     const auto& prev_cell = dk_prev_storage[g];
-    if (dk_curr_storage[g].size() != prev_cell.size()) {
-      PetscCheck(false, PETSC_COMM_WORLD, PETSC_ERR_ARG_SIZ,
-        "drift_kinetic particle storage mismatch in cell %d: curr=%zu prev=%zu",
-        g, dk_curr_storage[g].size(), prev_cell.size());
-    }
 
     PetscInt i = 0;
     for (auto& curr : dk_curr_storage[g]) {
       const auto& prev(prev_cell[i]);
-      //PetscCall(check_bounds(prev.r, "prev"));
-      //PetscCall(check_bounds(curr.r, "curr"));
 
       /// @todo this part should reuse the logic from:
       /// tests/drift_kinetic_push/drift_kinetic_push.h:620 implicit_test_utils::interpolation_test()
-#if 1
       DriftKineticPush push(q / m, m);
-      push.set_fields_callback(  //
+      push.set_fields_callback(
         [&](const Vector3R& rn, const Vector3R& r0, Vector3R& E_p, Vector3R& B_p,
           Vector3R& gradB_p) {
           E_p = {};
@@ -220,15 +198,13 @@ PetscErrorCode Particles::form_iteration()
           auto coords = cell_traversal_new(rn, r0);
           PetscInt segments = (PetscInt)coords.size() - 1;
 
-          if (segments <= 0)
+          if (segments <= 0) {
             segments = 1;
+          }
 
           pos[X] = pos[X] != 0 ? pos[X] / dx : (PetscReal)segments;
           pos[Y] = pos[Y] != 0 ? pos[Y] / dy : (PetscReal)segments;
           pos[Z] = pos[Z] != 0 ? pos[Z] / dz : (PetscReal)segments;
-
-          //LOG("r0 = ({}, {}, {})", r0.x()/dx, r0.y()/dy, r0.z()/dz);
-          //LOG("rn = ({}, {}, {})", rn.x()/dx, rn.y()/dy, rn.z()/dz);
 
           util.interpolate(E_dummy, B_p, gradB_dummy, rn, r0);
 
@@ -245,21 +221,24 @@ PetscErrorCode Particles::form_iteration()
           gradB_p = gradB_p.elementwise_division(pos);
         });
 
-      for (PetscReal dtau = dt, tau = 0.0; tau < dt; tau += dtau) {
-        PetscReal dtx = process_bound((curr.x()-prev.x())/dtau, curr.x(), xb, xe);
-        PetscReal dty = process_bound((curr.y()-prev.y())/dtau, curr.y(), yb, ye);
-        PetscReal dtz = process_bound((curr.z()-prev.z())/dtau, curr.z(), zb, ze);
+      push.process(dt, curr, prev);
+      Vector3R Vp = (curr.r - prev.r) / dt;
+
+      for (PetscReal dtau = 0.0, tau = 0.0; tau < dt; tau += dtau) {
+        PetscReal dtx = process_bound(Vp.x(), curr.x(), xb, xe);
+        PetscReal dty = process_bound(Vp.y(), curr.y(), yb, ye);
+        PetscReal dtz = process_bound(Vp.z(), curr.z(), zb, ze);
 
         dtau = std::min({dt - tau, dtx, dty, dtz});
 
-        LOG("dtau = {}", dtau);
-        push.process(dtau, curr, prev);
-
-#if 1
+        if (dt - dtau >= PETSC_SMALL) {
+          push.process(dtau, curr, prev);
+        }
         auto coords = cell_traversal_new(curr.r, prev.r);
         PetscInt segments = (PetscInt)coords.size() - 1;
-        if (segments <= 0)
+        if (segments <= 0) {
           segments = 1;
+        }
 
         Vector3R Vp = dtau > 0 ? (curr.r - prev.r) / dtau : Vector3R{};
         const PetscReal qn_over_Np = qn_Np(curr);
@@ -275,12 +254,10 @@ PetscErrorCode Particles::form_iteration()
           util.decomposition_J(rsn, rs0, Vp.elementwise_division(pos), qn_over_Np);
         }
         util.decomposition_M(curr.r, curr.mu_p * n_Np(curr));
-#endif
         correct_coordinates(curr);
       }
       ++i;
     }
-  #endif
   }
 
   PetscCall(DMDAVecRestoreArrayWrite(da, J_loc, &J_arr));

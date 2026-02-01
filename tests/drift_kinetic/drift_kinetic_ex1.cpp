@@ -37,7 +37,7 @@ void overwrite_config()
   geom_x = geom_nx * dx;
 
   dt = 1.5;
-  geom_nt = 10;
+  geom_nt = 6;
   geom_t = geom_nt * dt;
 
   Configuration::overwrite({
@@ -54,7 +54,7 @@ void overwrite_config()
         {"dy", dx},
         {"dz", dx},
         {"dt", dt},
-        {"diagnose_period", geom_t / 2},
+        {"diagnose_period", dt},
         {"da_boundary_x", "DM_BOUNDARY_PERIODIC"},
         {"da_boundary_y", "DM_BOUNDARY_PERIODIC"},
         {"da_boundary_z", "DM_BOUNDARY_PERIODIC"},

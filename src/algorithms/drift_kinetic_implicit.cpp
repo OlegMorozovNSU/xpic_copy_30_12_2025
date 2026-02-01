@@ -375,7 +375,7 @@ PetscErrorCode DriftKineticEsirkepov::decomposition_J(
     p_Rsn[Z] != p_Rs0[Z] ? p_Rsn[Z] - p_Rs0[Z] : 1.0,
   };
 
-  PetscInt shr = 1;
+  PetscInt shr = 2;
   PetscInt shw = 2 * shr + 1;
 
   Vector3I p_g{

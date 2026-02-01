@@ -179,7 +179,9 @@ PetscErrorCode Simulation::form_iteration(
   PetscCall(simulation->prepare_dBdr());
   LOG("prepare_dBdr() has finished, form_current():");
   PetscCall(simulation->form_current());
+  LOG("form_current() has finished, form_function():");
   PetscCall(simulation->form_function(vf));
+  LOG("form_function() has finished.");
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
