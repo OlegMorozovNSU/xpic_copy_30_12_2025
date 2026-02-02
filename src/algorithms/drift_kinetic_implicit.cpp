@@ -1,6 +1,7 @@
 #include "drift_kinetic_implicit.h"
 
 #include "src/algorithms/simple_interpolation.h"
+#include "src/utils/geometries.h"
 
 PetscReal NGP_left(PetscReal s)
 {
@@ -64,6 +65,30 @@ DriftKineticEsirkepov::DriftKineticEsirkepov( //
   : E_g(E_g), B_g(B_g), J_g(J_g), M_g(M_g)
 {
   set_dBidrj(dBidx_g, dBidy_g, dBidz_g);
+}
+
+PetscErrorCode DriftKineticEsirkepov::set_bounds(
+  const Vector3I& start, const Vector3I& size)
+{
+  PetscFunctionBeginHot;
+  bounds_start = start;
+  bounds_size = size;
+  bounds_set = true;
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+PetscErrorCode DriftKineticEsirkepov::check_bounds_region(
+  const Vector3I& start, const Vector3I& size, const char* label) const
+{
+  PetscFunctionBeginHot;
+  if (!bounds_set)
+    PetscFunctionReturn(PETSC_SUCCESS);
+
+  PetscCheck(is_region_within_bounds(start, size, bounds_start, bounds_size),
+    PETSC_COMM_WORLD, PETSC_ERR_ARG_OUTOFRANGE,
+    "drift_kinetic %s region is outside bounds: start=(%d %d %d) size=(%d %d %d) bounds_start=(%d %d %d) bounds_size=(%d %d %d)",
+    label, REP3_A(start), REP3_A(size), REP3_A(bounds_start), REP3_A(bounds_size));
+  PetscFunctionReturn(PETSC_SUCCESS);
 }
 
 PetscErrorCode DriftKineticEsirkepov::set_dBidrj_precomputed(
@@ -169,6 +194,8 @@ PetscErrorCode DriftKineticEsirkepov::interpolate_E(
 
   PetscInt shw = 3;
 
+  PetscCall(check_bounds_region(p_g, Vector3I{shw, shw, shw}, "interpolate_E"));
+
   for (PetscInt i = 0; i < POW3(shw); ++i) {
     PetscInt g_x = p_g[X] + i % shw;
     PetscInt g_y = p_g[Y] + (i / shw) % shw;
@@ -198,6 +225,8 @@ PetscErrorCode DriftKineticEsirkepov::interpolate_B(
 
   ::Shape shape;
   shape.setup(rn, 1., sfunc1);
+
+  PetscCall(check_bounds_region(shape.start, shape.size, "interpolate_B"));
 
   SimpleInterpolation interpolation(shape);
   SimpleInterpolation::Context E_dummy;
@@ -264,6 +293,8 @@ PetscErrorCode DriftKineticEsirkepov::interpolate_gradB(
   };
 
   PetscInt shw = 3;
+
+  PetscCall(check_bounds_region(p_g, Vector3I{shw, shw, shw}, "interpolate_gradB"));
 
   for (PetscInt i = 0; i < POW3(shw); ++i) {
     PetscInt g_x = p_g[X] + i % shw;
@@ -339,11 +370,11 @@ PetscErrorCode DriftKineticEsirkepov::interpolate(Vector3R& E_p, Vector3R& B_p,
   B_p = {};
   gradB_p = {};
 
-  interpolate_E(E_p, rn, r0);
-  interpolate_B(B_p, rn);
+  PetscCall(interpolate_E(E_p, rn, r0));
+  PetscCall(interpolate_B(B_p, rn));
   auto b_p = B_p.normalized();
   if (!gradB_g) {
-    interpolate_gradB(gradB_p, b_p, rn, r0);
+    PetscCall(interpolate_gradB(gradB_p, b_p, rn, r0));
   }
   else {
     ::Shape shape;
@@ -390,6 +421,8 @@ PetscErrorCode DriftKineticEsirkepov::decomposition_J(
 
   PetscInt shw = 3;
 
+  PetscCall(check_bounds_region(p_g, Vector3I{shw, shw, shw}, "decomposition_J"));
+
   for (PetscInt i = 0; i < POW3(shw); ++i) {
     PetscInt g_x = p_g[X] + i % shw;
     PetscInt g_y = p_g[Y] + (i / shw) % shw;
@@ -429,6 +462,7 @@ PetscErrorCode DriftKineticEsirkepov::decomposition_M(
   PetscFunctionBeginHot;
   ::Shape shape;
   shape.setup(Rsn, 1., sfunc1);
+  PetscCall(check_bounds_region(shape.start, shape.size, "decomposition_M"));
 
   Vector3R B_p = {};
   interpolate_B(B_p, Rsn);
@@ -457,7 +491,7 @@ PetscErrorCode DriftKineticEsirkepov::decomposition(const Vector3R& Rsn,
   const Vector3R& Rs0, const Vector3R& Vp, PetscReal q_p, PetscReal mu_p)
 {
   PetscFunctionBeginHot;
-  decomposition_J(Rsn, Rs0, Vp, q_p);
-  decomposition_M(Rsn, mu_p);
+  PetscCall(decomposition_J(Rsn, Rs0, Vp, q_p));
+  PetscCall(decomposition_M(Rsn, mu_p));
   PetscFunctionReturn(PETSC_SUCCESS);
 }

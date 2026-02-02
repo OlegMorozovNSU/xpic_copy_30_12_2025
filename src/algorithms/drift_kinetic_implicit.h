@@ -18,6 +18,7 @@ public:
   PetscErrorCode set_dBidrj_precomputed(Vector3R*** _dBidx, Vector3R*** _dBidy, Vector3R*** _dBidz);
   PetscErrorCode set_dBidrj_local(Vector3R*** _dBidx, Vector3R*** _dBidy, Vector3R*** _dBidz,
     const Vector3I& start, const Vector3I& size);
+  PetscErrorCode set_bounds(const Vector3I& start, const Vector3I& size);
 
   PetscErrorCode interpolate(Vector3R& E_p, Vector3R& B_p, Vector3R& gradB_p,
     const Vector3R& rn, const Vector3R& r0);
@@ -35,6 +36,9 @@ public:
   PetscErrorCode decomposition_M(const Vector3R& Rsn, PetscReal mu_p);
 
 private:
+  PetscErrorCode check_bounds_region(const Vector3I& start,
+    const Vector3I& size, const char* label) const;
+
   Vector3R*** dBidx_g = nullptr;
   Vector3R*** dBidy_g = nullptr;
   Vector3R*** dBidz_g = nullptr;
@@ -46,6 +50,10 @@ private:
   Vector3R*** M_g;
 
   Vector3R*** gradB_g = nullptr;
+
+  bool bounds_set = false;
+  Vector3I bounds_start = {};
+  Vector3I bounds_size = {};
 };
 
 #endif  // SRC_ALGORITHMS_DRIFT_KINETIC_ESIRKEPOV_H

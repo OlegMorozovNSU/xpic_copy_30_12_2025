@@ -120,6 +120,7 @@ PetscErrorCode Particles::initialize_point_by_field(const Arr B_arr)
   const PetscReal qm = parameters.q / parameters.m;
   const PetscReal mp = parameters.m;
   DriftKineticEsirkepov esirkepov(nullptr, B_arr, nullptr, nullptr);
+  PetscCall(esirkepov.set_bounds(world.gstart, world.gsize));
 
   for (PetscInt g = 0; g < world.size.elements_product(); ++g) {
     auto& cell = storage[g];
@@ -173,6 +174,7 @@ PetscErrorCode Particles::form_iteration()
 
   DriftKineticEsirkepov util(E_arr, B_arr, J_arr, M_arr);
   util.set_dBidrj_precomputed(simulation_.dBdx_arr, simulation_.dBdy_arr, simulation_.dBdz_arr);
+  PetscCall(util.set_bounds(world.gstart, world.gsize));
 
 #pragma omp parallel for
   for (PetscInt g = 0; g < (PetscInt)dk_curr_storage.size(); ++g) {
@@ -185,6 +187,10 @@ PetscErrorCode Particles::form_iteration()
       /// @todo this part should reuse the logic from:
       /// tests/drift_kinetic_push/drift_kinetic_push.h:620 implicit_test_utils::interpolation_test()
       DriftKineticPush push(q / m, m);
+      auto call_abort = [&](PetscErrorCode ierr) {
+        if (ierr)
+          PetscCallAbort(PETSC_COMM_WORLD, ierr);
+      };
       push.set_fields_callback(
         [&](const Vector3R& r0, const Vector3R& rn, Vector3R& E_p, Vector3R& B_p,
           Vector3R& gradB_p) {
@@ -207,12 +213,12 @@ PetscErrorCode Particles::form_iteration()
           pos[Y] = pos[Y] != 0 ? pos[Y] / dy : (PetscReal)segments;
           pos[Z] = pos[Z] != 0 ? pos[Z] / dz : (PetscReal)segments;
 
-          util.interpolate(E_dummy, B_p, gradB_dummy, rn, r0);
+          call_abort(util.interpolate(E_dummy, B_p, gradB_dummy, rn, r0));
 
           for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
             auto&& rs0 = coords[s - 1];
             auto&& rsn = coords[s - 0];
-            util.interpolate(Es_p, B_dummy, gradBs_p, rsn, rs0);
+            call_abort(util.interpolate(Es_p, B_dummy, gradBs_p, rsn, rs0));
 
             E_p += Es_p;
             gradB_p += gradBs_p;
@@ -250,10 +256,10 @@ PetscErrorCode Particles::form_iteration()
           auto&& rs0 = coords[s - 1];
           auto&& rsn = coords[s - 0];
           PetscReal a = a0 * (rsn - rs0).length() / path;
-          util.decomposition_J(rsn, rs0, Vph, a);
+          call_abort(util.decomposition_J(rsn, rs0, Vph, a));
 
           PetscReal b = b0 * (rsn - rs0).length() / path;
-          util.decomposition_M(rsn, b);
+          call_abort(util.decomposition_M(rsn, b));
         }
         correct_coordinates(curr);
       }

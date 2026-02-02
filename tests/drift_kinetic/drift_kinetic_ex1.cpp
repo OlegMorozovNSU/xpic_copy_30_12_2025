@@ -64,7 +64,7 @@ void overwrite_config()
       "Particles",
       {{
         {"sort_name", "electrons"},
-        {"Np", 1},
+        {"Np", 100},
         {"n", +1.0},
         {"q", -1.0},
         {"m", +1.0},
