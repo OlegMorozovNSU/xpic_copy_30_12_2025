@@ -100,13 +100,15 @@ bool DriftKineticPush::check_discrepancy(PetscReal dt, const PointByField& pn, c
 PetscReal DriftKineticPush::get_residue_r(PetscReal dt, const PointByField& pn,
   const PointByField& p0) const
 {
-  return (pn.r - p0.r - dt * Vp).length()/pn.r.length();
+  //return (pn.r - p0.r - dt * Vp).length()/pn.r.length();
+  return (pn.r - p0.r - dt * Vp).length();
 }
 
 PetscReal DriftKineticPush::get_residue_v(PetscReal dt, const PointByField& pn,
   const PointByField& p0) const
 {
-  return std::abs((pn.p_parallel - p0.p_parallel) - dt * get_v_parallel(p0))/std::abs(pn.p_parallel);
+  //return std::abs((pn.p_parallel - p0.p_parallel) - dt * get_v_parallel(p0))/std::abs(pn.p_parallel);
+  return std::abs((pn.p_parallel - p0.p_parallel) - dt * get_v_parallel(p0));
 }
 
 void DriftKineticPush::update_r(PetscReal dt, PointByField& pn, const PointByField& p0) const
@@ -150,7 +152,7 @@ void DriftKineticPush::update_fields(const PointByField& pn, const PointByField&
   meanB = 0.5 * (Bn + B0);
   bh = Bh.normalized(), bn = Bn.normalized(), b0 = B0.normalized();
   lenBh = Bh.length();
-  #if 1
+  #if 0
   LOG("update_fields:");
   LOG("it = {}", it);
   LOG("p0.x = {}, p0.y = {}, p0.z = {}", p0.r.x(), p0.r.y(), p0.r.z());
