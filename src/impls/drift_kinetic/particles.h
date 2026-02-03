@@ -13,6 +13,7 @@ class Particles : public interfaces::Particles {
 public:
   Particles(Simulation& simulation, const SortParameters& parameters);
   PetscErrorCode finalize() override;
+  PetscErrorCode sync_dk_curr_storage();
   PetscErrorCode prepare_storage();
   PetscErrorCode form_iteration();
   PetscErrorCode initialize_point_by_field(const Arr B_arr);

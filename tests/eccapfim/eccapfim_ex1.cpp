@@ -64,7 +64,7 @@ void overwrite_config()
       "Particles",
       {{
         {"sort_name", "electrons"},
-        {"Np", 100},
+        {"Np", 1},
         {"n", +1.0},
         {"q", -1.0},
         {"m", +1.0},
@@ -78,6 +78,8 @@ void overwrite_config()
         {"particles", "electrons"},
         {"coordinate", {{"name", "CoordinateInBox"}}},
         {"momentum", {{"name", "MaxwellianMomentum"}, {"tov", true}}},
+        //{"momentum", {{"name", "PreciseMomentum"}, {"value", {0.1,0.1,0.1}}}},
+        //{"coordinate", {{"name", "PreciseCoordinate"}, {"value", {0.5,0.5,0.5}}}},
       }},
     },
     {

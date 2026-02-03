@@ -6,82 +6,6 @@
 #include "src/utils/geometries.h"
 #include "src/utils/utils.h"
 
-namespace {
-
-/// @brief Splits a straight segment into intersections with cell faces aligned to dx, dy, dz.
-std::vector<Vector3R> cell_traversal_new(const Vector3R& end, const Vector3R& start)
-{
-  constexpr PetscReal eps = 1e-12;
-
-  Vector3R dir = end - start;
-  if (dir.squared() < eps) {
-    return {start, end};
-  }
-
-  auto init_axis = [&](PetscReal spacing, PetscReal s, PetscReal d,
-                       PetscReal& t_max, PetscReal& t_delta) {
-    if (std::abs(d) < eps) {
-      t_max = std::numeric_limits<PetscReal>::max();
-      t_delta = 0.0;
-      return;
-    }
-
-    // Shift away from exact boundaries to avoid zero-length steps.
-    PetscReal shifted = d > 0 ? (s + eps) : (s - eps);
-    PetscReal boundary = (d > 0)
-      ? std::ceil(shifted / spacing) * spacing
-      : std::floor(shifted / spacing) * spacing;
-
-    t_max = (boundary - s) / d;                // parametric distance to the next plane
-    t_delta = spacing / std::abs(d);           // parametric step between successive planes
-  };
-
-  PetscReal tx, ty, tz;
-  PetscReal dtx, dty, dtz;
-  init_axis(dx, start[X], dir[X], tx, dtx);
-  init_axis(dy, start[Y], dir[Y], ty, dty);
-  init_axis(dz, start[Z], dir[Z], tz, dtz);
-
-  auto nearly_equal = [&](PetscReal a, PetscReal b) {
-    return std::abs(a - b) <= eps;
-  };
-
-  auto push_unique = [&](std::vector<Vector3R>& pts, const Vector3R& p) {
-    if (pts.empty() || (p - pts.back()).length() > eps * (1.0 + dir.length())) {
-      pts.push_back(p);
-    }
-  };
-
-  std::vector<Vector3R> points;
-  points.reserve(8);
-  points.push_back(start);
-
-  while (true) {
-    PetscReal t_next = std::min({tx, ty, tz});
-    if (t_next >= 1.0 - eps) {
-      break;
-    }
-
-    Vector3R p = start + dir * t_next;
-    push_unique(points, p);
-
-    if (std::abs(dir[X]) >= eps && nearly_equal(t_next, tx)) {
-      tx += dtx;
-    }
-    if (std::abs(dir[Y]) >= eps && nearly_equal(t_next, ty)) {
-      ty += dty;
-    }
-    if (std::abs(dir[Z]) >= eps && nearly_equal(t_next, tz)) {
-      tz += dtz;
-    }
-  }
-
-  push_unique(points, end);
-  return points;
-}
-
-}  // namespace
-
 namespace drift_kinetic {
 
 Particles::Particles(Simulation& simulation, const SortParameters& parameters)
@@ -136,6 +60,7 @@ PetscErrorCode Particles::initialize_point_by_field(const Arr B_arr)
 
       dk_cell.emplace_back(point, B_p, mp, qm);
     }
+    cell.clear();
   }
 
   PetscFunctionReturn(PETSC_SUCCESS);
@@ -182,7 +107,7 @@ PetscErrorCode Particles::form_iteration()
 
     PetscInt i = 0;
     for (auto& curr : dk_curr_storage[g]) {
-      const auto& prev(prev_cell[i]);
+      auto prev(prev_cell[i]);
 
       /// @todo this part should reuse the logic from:
       /// tests/drift_kinetic_push/drift_kinetic_push.h:620 implicit_test_utils::interpolation_test()
@@ -201,8 +126,7 @@ PetscErrorCode Particles::form_iteration()
           Vector3R E_dummy, B_dummy, gradB_dummy;
 
           Vector3R pos = (rn - r0);
-          auto coords = cell_traversal_new(rn, r0);
-          coords = cell_traversal(rn, r0);
+          auto coords = cell_traversal(rn, r0);
           PetscInt segments = (PetscInt)coords.size() - 1;
 
           if (segments <= 0) {
@@ -228,11 +152,15 @@ PetscErrorCode Particles::form_iteration()
           gradB_p = gradB_p.elementwise_division(pos);
         });
       
-      //PetscReal v = std::sqrt((POW2(curr.p_parallel) + POW2(curr.p_perp)));
-      //Vector3R Vph(v, v, v);
+      PetscReal v = std::sqrt((POW2(curr.p_parallel) + POW2(curr.p_perp)));
+      Vector3R Vph(v, v, v);
 
-      push.process(dt, curr, prev);
-      Vector3R Vph = (curr.r - prev.r) / dt;
+      //push.process(dt, curr, prev);
+      //Vph = (curr.r - prev.r) / dt;
+#if 0
+      LOG("v_th = {}", v);
+      LOG("v_drift = ({}, {}, {})", Vph.x(), Vph.y(), Vph.z());
+#endif
 
       for (PetscReal dtau = 0.0, tau = 0.0; tau < dt; tau += dtau) {
         PetscReal dtx = process_bound(Vph.x(), curr.x(), xb, xe);
@@ -241,10 +169,12 @@ PetscErrorCode Particles::form_iteration()
 
         dtau = std::min({dt - tau, dtx, dty, dtz});
 
-        if (dt-dtau >= PETSC_SMALL) {
-          push.process(dtau, curr, prev);
-          Vph = (curr.r - prev.r) / dtau;
-        }
+        LOG("dt - tau, dtx, dty, dtz = {}, {}, {}, {}", dt - tau, dtx, dty, dtz);
+
+        push.process(dtau, curr, prev);
+        Vph = (curr.r - prev.r) / dtau;
+
+        LOG("Vph.length(), v = {}, {}", Vph.length(), v);
 
         PetscReal path = (curr.r - prev.r).length();
         auto coords = cell_traversal(curr.r, prev.r);
@@ -262,6 +192,7 @@ PetscErrorCode Particles::form_iteration()
           call_abort(util.decomposition_M(rsn, b));
         }
         correct_coordinates(curr);
+        prev = curr;
       }
 
       ++i;
@@ -288,6 +219,41 @@ PetscReal Particles::qn_Np(const PointByField& point) const
 {
   Point dummy(point.r, Vector3R{});
   return interfaces::Particles::qn_Np(dummy);
+}
+
+PetscErrorCode Particles::sync_dk_curr_storage()
+{
+  PetscFunctionBeginUser;
+  const PetscReal qm = parameters.q / parameters.m;
+  const PetscReal mp = parameters.m;
+
+  PetscCall(DMGlobalToLocal(simulation_.da, simulation_.B, INSERT_VALUES, simulation_.B_loc));
+  PetscCall(DMDAVecGetArrayRead(simulation_.da, simulation_.B_loc, &simulation_.B_arr));
+
+  DriftKineticEsirkepov esirkepov(nullptr, simulation_.B_arr, nullptr, nullptr);
+
+  for (PetscInt g = 0; g < world.size.elements_product(); ++g) {
+    auto& cell = storage[g];
+    if (cell.empty())
+      continue;
+
+    auto& dk_cell = dk_curr_storage[g];
+    for (const auto& point : cell) {
+      Vector3R B_p{};
+      PetscCall(esirkepov.interpolate_B(B_p, point.r));
+      PointByField point_by_field(point, B_p, mp, qm);
+#if 1
+      LOG("B_p = ({}, {}, {})", B_p.x(), B_p.y(), B_p.z());
+      LOG("r = ({}, {}, {})", point_by_field.r.x(), point_by_field.r.y(), point_by_field.r.z());
+      LOG("p_parallel = {}, p_perp = {}", point_by_field.p_parallel, point_by_field.p_perp);
+#endif
+      dk_cell.emplace_back(point_by_field);
+    }
+    cell.clear();
+  }
+
+  PetscCall(DMDAVecRestoreArrayRead(simulation_.da, simulation_.B_loc, &simulation_.B_arr));
+  PetscFunctionReturn(PETSC_SUCCESS);
 }
 
 PetscErrorCode Particles::prepare_storage()
