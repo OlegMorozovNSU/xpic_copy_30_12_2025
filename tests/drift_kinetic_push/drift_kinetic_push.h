@@ -668,7 +668,7 @@ namespace implicit_test_utils {
       context.E_arr, context.B_arr, nullptr, nullptr);
 
     esirkepov.set_dBidrj(context.dBdx_arr, context.dBdy_arr, context.dBdz_arr);
-
+/*
     auto f_grid = [&](const Vector3R& r0, const Vector3R& rn, Vector3R& E_p,
       Vector3R& B_p, Vector3R& gradB_p){
       E_p = {};
@@ -702,7 +702,40 @@ namespace implicit_test_utils {
       E_p = E_p.elementwise_division(pos);
       gradB_p = gradB_p.elementwise_division(pos);
     };
+*/
+    auto f_grid = [&](const Vector3R& r0, const Vector3R& rn, Vector3R& E_p, Vector3R& B_p,
+          Vector3R& gradB_p) {
+          E_p = {};
+          B_p = {};
+          gradB_p = {};
+          Vector3R Es_p, Bs_p, gradBs_p;
 
+          Vector3R pos = (rn - r0);
+          PetscInt path = pos.length();
+          auto coords = cell_traversal(rn, r0);
+          PetscInt segments = (PetscInt)coords.size() - 1;
+
+          if (segments <= 0) {
+            segments = 1;
+          }
+
+          pos[X] = pos[X] != 0 ? pos[X] / dx : (PetscReal)segments;
+          pos[Y] = pos[Y] != 0 ? pos[Y] / dy : (PetscReal)segments;
+          pos[Z] = pos[Z] != 0 ? pos[Z] / dz : (PetscReal)segments;
+
+          for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
+            auto&& rs0 = coords[s - 1];
+            auto&& rsn = coords[s - 0];
+            esirkepov.interpolate(Es_p, Bs_p, gradBs_p, rsn, rs0);
+
+            PetscReal beta = path > 0 ? (rsn - rs0).length() / path : 1.0;
+            E_p += Es_p * beta;
+            B_p += Bs_p * beta;
+            gradB_p += gradBs_p.elementwise_division(pos);
+          }
+        };
+
+/*
     auto f_analytical = [&](const Vector3R& r0, const Vector3R& rn, Vector3R& E_p,
       Vector3R& B_p, Vector3R& gradB_p){
         E_p = {};
@@ -740,6 +773,45 @@ namespace implicit_test_utils {
       E_p = E_p.elementwise_division(pos);
       gradB_p = gradB_p.elementwise_division(pos);
       };
+*/
+
+    auto f_analytical = [&](const Vector3R& r0, const Vector3R& rn, Vector3R& E_p, Vector3R& B_p,
+          Vector3R& gradB_p) {
+          E_p = {};
+          B_p = {};
+          gradB_p = {};
+          Vector3R Es_p, Bs_p, gradBs_p;
+
+          Vector3R pos = (rn - r0);
+          PetscInt path = pos.length();
+          auto coords = cell_traversal(rn, r0);
+          PetscInt segments = (PetscInt)coords.size() - 1;
+
+          if (segments <= 0) {
+            segments = 1;
+          }
+
+          pos[X] = pos[X] != 0 ? pos[X] : (PetscReal)segments;
+          pos[Y] = pos[Y] != 0 ? pos[Y] : (PetscReal)segments;
+          pos[Z] = pos[Z] != 0 ? pos[Z] : (PetscReal)segments;
+
+          for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
+            auto&& rs0 = coords[s - 1];
+            auto&& rsn = coords[s - 0];
+            test_param.analytic_fn(rsn, Es_p, Bs_p, gradBs_p);
+
+            Vector3R drs{
+              rsn[X] != rs0[X] ? rsn[X] - rs0[X] : 1.0,
+              rsn[Y] != rs0[Y] ? rsn[Y] - rs0[Y] : 1.0,
+              rsn[Z] != rs0[Z] ? rsn[Z] - rs0[Z] : 1.0,
+            };
+
+            PetscReal beta = path > 0 ? (rsn - rs0).length() / path : 1.0;
+            E_p += Es_p * beta;
+            B_p += Bs_p * beta;
+            gradB_p += gradBs_p.elementwise_product(drs).elementwise_division(pos);
+          }
+        };
 
     Vector3R pos_old(test_param.r0);
     Vector3R pos_new(test_param.rn);

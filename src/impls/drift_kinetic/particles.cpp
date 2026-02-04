@@ -99,7 +99,7 @@ PetscErrorCode Particles::form_iteration()
 
   DriftKineticEsirkepov util(E_arr, B_arr, J_arr, M_arr);
   util.set_dBidrj_precomputed(simulation_.dBdx_arr, simulation_.dBdy_arr, simulation_.dBdz_arr);
-  PetscCall(util.set_bounds(world.gstart, world.gsize));
+  //PetscCall(util.set_bounds(world.gstart, world.gsize));
 
 #pragma omp parallel for
   for (PetscInt g = 0; g < (PetscInt)dk_curr_storage.size(); ++g) {

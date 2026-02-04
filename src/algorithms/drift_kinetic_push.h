@@ -11,7 +11,7 @@ public:
   DriftKineticPush(PetscReal qm, PetscReal mp);
 
   /// @brief Sets numerical tolerances controlling iterative process.
-  void set_tolerances(PetscReal eps, PetscReal delta, PetscInt maxit);
+  void set_tolerances(PetscReal atol, PetscReal rtol, PetscInt maxit);
 
   /// @brief Assumed to be constant during the iteration.
   void set_qm(PetscReal qm);
@@ -63,8 +63,8 @@ private:
   /// @brief Iteration counters and tolerances.
   PetscInt it = 0;
   PetscInt maxit = 30;
-  PetscReal eps = 1e-7;
-  PetscReal delta = 1e-7;
+  PetscReal atol = 1e-7;
+  PetscReal rtol = 1e-7;
   PetscReal Rn, Vn;
   PetscReal R0, V0;
 

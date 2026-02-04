@@ -155,7 +155,7 @@ void DriftKineticPush::update_fields(const PointByField& pn, const PointByField&
   meanB = 0.5 * (Bn + B0);
   bh = Bh.normalized(), bn = Bn.normalized(), b0 = B0.normalized();
   lenBh = Bh.length();
-  #if 1
+  #if 0
   LOG("update_fields:");
   LOG("it = {}", it);
   LOG("Rn = {}, Vn = {}", Rn, Vn);
