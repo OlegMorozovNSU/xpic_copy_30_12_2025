@@ -668,41 +668,7 @@ namespace implicit_test_utils {
       context.E_arr, context.B_arr, nullptr, nullptr);
 
     esirkepov.set_dBidrj(context.dBdx_arr, context.dBdy_arr, context.dBdz_arr);
-/*
-    auto f_grid = [&](const Vector3R& r0, const Vector3R& rn, Vector3R& E_p,
-      Vector3R& B_p, Vector3R& gradB_p){
-      E_p = {};
-      B_p = {};
-      gradB_p = {};
-      Vector3R Es_p, Bs_p, gradBs_p;
-      Vector3R E_dummy, B_dummy, gradB_dummy;
 
-      Vector3R pos = (rn - r0);
-
-      auto coords = cell_traversal_old(rn, r0);
-      PetscInt Nsegments = (PetscInt)coords.size() - 1;
-
-      pos[X] = pos[X] != 0 ? pos[X] / dx : Nsegments;
-      pos[Y] = pos[Y] != 0 ? pos[Y] / dy : Nsegments;
-      pos[Z] = pos[Z] != 0 ? pos[Z] / dz : Nsegments;
-
-      esirkepov.interpolate(E_dummy, B_p, gradB_dummy, rn, r0);
-
-      for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
-        auto&& rs0 = coords[s - 1];
-        auto&& rsn = coords[s - 0];
-
-        std::cout << rsn << std::endl;
-
-        esirkepov.interpolate(Es_p, B_dummy, gradBs_p, rsn, rs0);
-
-        E_p += Es_p;
-        gradB_p += gradBs_p;
-      }
-      E_p = E_p.elementwise_division(pos);
-      gradB_p = gradB_p.elementwise_division(pos);
-    };
-*/
     auto f_grid = [&](const Vector3R& r0, const Vector3R& rn, Vector3R& E_p, Vector3R& B_p,
           Vector3R& gradB_p) {
           E_p = {};
@@ -734,46 +700,6 @@ namespace implicit_test_utils {
             gradB_p += gradBs_p.elementwise_division(pos);
           }
         };
-
-/*
-    auto f_analytical = [&](const Vector3R& r0, const Vector3R& rn, Vector3R& E_p,
-      Vector3R& B_p, Vector3R& gradB_p){
-        E_p = {};
-        B_p = {};
-        gradB_p = {};
-        Vector3R Es_p, Bs_p, gradBs_p;
-        Vector3R E_dummy, B_dummy, gradB_dummy;
-
-        Vector3R pos = (rn - r0);
-
-        auto coords = cell_traversal_old(rn, r0);
-        PetscInt Nsegments = (PetscInt)coords.size() - 1;
-
-        pos[X] = pos[X] != 0 ? pos[X] : Nsegments;
-        pos[Y] = pos[Y] != 0 ? pos[Y] : Nsegments;
-        pos[Z] = pos[Z] != 0 ? pos[Z] : Nsegments;
-
-        test_param.analytic_fn(rn, E_dummy, B_p, gradB_dummy);
-
-      for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
-        auto&& rs0 = coords[s - 1];
-        auto&& rsn = coords[s - 0];
-
-        test_param.analytic_fn(rsn, Es_p, B_dummy, gradBs_p);
-
-        Vector3R drs{
-          rsn[X] != rs0[X] ? rsn[X] - rs0[X] : 1.0,
-          rsn[Y] != rs0[Y] ? rsn[Y] - rs0[Y] : 1.0,
-          rsn[Z] != rs0[Z] ? rsn[Z] - rs0[Z] : 1.0,
-        };
-
-        E_p += Es_p.elementwise_product(drs);
-        gradB_p += gradBs_p.elementwise_product(drs);
-      }
-      E_p = E_p.elementwise_division(pos);
-      gradB_p = gradB_p.elementwise_division(pos);
-      };
-*/
 
     auto f_analytical = [&](const Vector3R& r0, const Vector3R& rn, Vector3R& E_p, Vector3R& B_p,
           Vector3R& gradB_p) {
