@@ -123,9 +123,9 @@ PetscErrorCode Particles::form_iteration()
           B_p = {};
           gradB_p = {};
           Vector3R Es_p, Bs_p, gradBs_p;
-          Vector3R E_dummy, B_dummy, gradB_dummy;
 
           Vector3R pos = (rn - r0);
+          PetscInt path = pos.length();
           auto coords = cell_traversal(rn, r0);
           PetscInt segments = (PetscInt)coords.size() - 1;
 
@@ -137,19 +137,16 @@ PetscErrorCode Particles::form_iteration()
           pos[Y] = pos[Y] != 0 ? pos[Y] / dy : (PetscReal)segments;
           pos[Z] = pos[Z] != 0 ? pos[Z] / dz : (PetscReal)segments;
 
-          call_abort(util.interpolate(E_dummy, B_p, gradB_dummy, rn, r0));
-
           for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
             auto&& rs0 = coords[s - 1];
             auto&& rsn = coords[s - 0];
-            call_abort(util.interpolate(Es_p, B_dummy, gradBs_p, rsn, rs0));
+            call_abort(util.interpolate(Es_p, Bs_p, gradBs_p, rsn, rs0));
 
-            E_p += Es_p;
-            gradB_p += gradBs_p;
+            PetscReal beta = path > 0 ? (rsn - rs0).length() / path : 1.0;
+            E_p += Es_p * beta;
+            B_p += Bs_p * beta;
+            gradB_p += gradBs_p.elementwise_division(pos);
           }
-
-          E_p = E_p.elementwise_division(pos);
-          gradB_p = gradB_p.elementwise_division(pos);
         });
       
       PetscReal v = std::sqrt((POW2(curr.p_parallel) + POW2(curr.p_perp)));

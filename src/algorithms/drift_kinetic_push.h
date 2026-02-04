@@ -37,7 +37,7 @@ public:
 private:
 
   /// @brief Initializes cached fields and unit vectors before the nonlinear loop.
-  void pre_step(const PointByField& pn, const PointByField& p0);
+  void pre_step(const PetscReal dt, PointByField& pn, const PointByField& p0);
 
   /// @brief Evaluates drift velocity `Vp` for the current iteration.
   void update_Vp(const PointByField& pn, const PointByField& p0);
@@ -63,9 +63,10 @@ private:
   /// @brief Iteration counters and tolerances.
   PetscInt it = 0;
   PetscInt maxit = 30;
-  PetscReal eps = 1e-9;
-  PetscReal delta = 1e-8;
-  PetscReal R1, R2;
+  PetscReal eps = 1e-7;
+  PetscReal delta = 1e-7;
+  PetscReal Rn, Vn;
+  PetscReal R0, V0;
 
   /// @brief Particle parameters.
   PetscReal qm = 0;

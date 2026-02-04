@@ -203,6 +203,15 @@ PetscErrorCode DriftKineticEsirkepov::interpolate_E(
 
     auto& E = E_g[g_z][g_y][g_x];
 
+    E_p[X] += alpha * E[X] * sfunc1(g_x + 0.5 - 0.5 * (p_Rsn[X] + p_Rs0[X])) *
+        acrossSEfunc(g_y - p_Rs0[Y], g_y - p_Rsn[Y], g_z - p_Rs0[Z], g_z - p_Rsn[Z]);
+
+    E_p[Y] += alpha * E[Y] * sfunc1(g_y + 0.5 - 0.5 * (p_Rsn[Y] + p_Rs0[Y])) *
+        acrossSEfunc(g_z - p_Rs0[Z], g_z - p_Rsn[Z], g_x - p_Rs0[X], g_x - p_Rsn[X]);
+
+    E_p[Z] += alpha * E[Z] * sfunc1(g_z + 0.5 - 0.5 * (p_Rsn[Z] + p_Rs0[Z])) *
+        acrossSEfunc(g_x - p_Rs0[X], g_x - p_Rsn[X], g_y - p_Rs0[Y], g_y - p_Rsn[Y]);
+#if 0
     // clang-format off
     E_p[X] += alpha * E[X] * p_dR[X] * sfunc1(g_x + 0.5 - 0.5 * (p_Rsn[X] + p_Rs0[X])) *
         acrossSEfunc(g_y - p_Rs0[Y], g_y - p_Rsn[Y], g_z - p_Rs0[Z], g_z - p_Rsn[Z]);
@@ -213,6 +222,7 @@ PetscErrorCode DriftKineticEsirkepov::interpolate_E(
     E_p[Z] += alpha * E[Z] * p_dR[Z] * sfunc1(g_z + 0.5 - 0.5 * (p_Rsn[Z] + p_Rs0[Z])) *
         acrossSEfunc(g_x - p_Rs0[X], g_x - p_Rsn[X], g_y - p_Rs0[Y], g_y - p_Rsn[Y]);
     // clang-format on
+#endif
   }
   PetscFunctionReturn(PETSC_SUCCESS);
 }
