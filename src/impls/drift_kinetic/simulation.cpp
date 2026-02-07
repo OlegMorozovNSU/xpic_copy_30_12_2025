@@ -15,40 +15,6 @@ static constexpr PetscReal divtol = PETSC_DETERMINE;
 static constexpr PetscInt maxit = 100;
 static constexpr PetscInt maxf = PETSC_UNLIMITED;
 
-class PointByFieldInitializer final : public interfaces::Diagnostic {
-public:
-  explicit PointByFieldInitializer(Simulation& simulation)
-    : simulation_(simulation)
-  {
-  }
-
-  PetscErrorCode diagnose(PetscInt /* t */) override
-  {
-    PetscFunctionBeginUser;
-    if (done_)
-      PetscFunctionReturn(PETSC_SUCCESS);
-
-    PetscCall(DMGlobalToLocal(simulation_.da, simulation_.B, INSERT_VALUES,
-      simulation_.B_loc));
-    PetscCall(DMDAVecGetArrayRead(simulation_.da, simulation_.B_loc,
-      &simulation_.B_arr));
-
-    for (auto& sort : simulation_.particles_)
-      PetscCall(sort->initialize_point_by_field(simulation_.B_arr));
-
-    PetscCall(DMDAVecRestoreArrayRead(simulation_.da, simulation_.B_loc,
-      &simulation_.B_arr));
-
-    done_ = true;
-    PetscFunctionReturn(PETSC_SUCCESS);
-  }
-
-private:
-  Simulation& simulation_;
-  bool done_ = false;
-};
-
-
 PetscErrorCode Simulation::initialize_implementation()
 {
   PetscFunctionBeginUser;
@@ -100,7 +66,6 @@ PetscErrorCode Simulation::initialize_implementation()
   PetscCall(init_particles(*this, particles_));
 
   energy_cons = std::make_unique<EnergyConservation>(*this);
-  diagnostics_.emplace_back(std::make_unique<PointByFieldInitializer>(*this));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -162,6 +127,7 @@ PetscErrorCode Simulation::timestep_implementation(PetscInt t)
 
   for (auto& sort : particles_) {
     PetscCall(sort->update_cells());
+    //PetscCall(energy_cons->calc_kinetic_energy(sort));
   }
 
   PetscCall(energy_cons->diagnose(t));
@@ -173,15 +139,10 @@ PetscErrorCode Simulation::form_iteration(
 {
   PetscFunctionBeginUser;
   auto* simulation = (Simulation*)ctx;
-  LOG("from_snes():");
   PetscCall(simulation->from_snes(vx, simulation->E_hk, simulation->B_hk));
-  LOG("from_snes() has finished, prepare_dBdr():");
   PetscCall(simulation->prepare_dBdr());
-  LOG("prepare_dBdr() has finished, form_current():");
   PetscCall(simulation->form_current());
-  LOG("form_current() has finished, form_function():");
   PetscCall(simulation->form_function(vf));
-  LOG("form_function() has finished.");
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -214,6 +175,7 @@ PetscErrorCode Simulation::form_current()
 {
   PetscFunctionBeginUser;
   PetscCall(VecSet(J, 0.0));
+  PetscCall(VecSet(M, 0.0));
 
   for (auto& sort : particles_) {
     PetscCall(VecSet(sort->J, 0.0));
@@ -234,6 +196,13 @@ PetscErrorCode Simulation::form_current()
     PetscCall(VecAXPY(J, 1, sort->J));
     PetscCall(VecAXPY(M, 1, sort->M));
   }
+  PetscReal w_M, w_B = 0;
+  VecNorm(M, NORM_2, &w_M);
+  VecNorm(B, NORM_2, &w_B);
+
+  LOG("<M> = {}", w_M);
+  LOG("T/mc2*<B> = {}", 0.1/512*w_B);
+
 
   PetscCall(DMDAVecRestoreArrayRead(da, E_loc, &E_arr));
   PetscCall(DMDAVecRestoreArrayRead(da, B_loc, &B_arr));
@@ -324,7 +293,7 @@ PetscErrorCode Simulation::to_snes(Vec vE, Vec vB, Vec v)
 
 
 EnergyConservation::EnergyConservation(const Simulation& simulation)
-  : TableDiagnostic(CONFIG().out_dir + "/temporal/energy_conservation.txt"),
+  : TableDiagnostic(CONFIG().out_dir + "/temporal/dk_diagnostic.txt"),
     simulation(simulation)
 {
 }
@@ -353,6 +322,7 @@ PetscErrorCode EnergyConservation::add_columns(PetscInt t)
   PetscFunctionBeginUser;
   PetscCall(VecNorm(simulation.E, NORM_2, &w_E));
   PetscCall(VecNorm(simulation.B, NORM_2, &w_B));
+  PetscCall(VecNorm(simulation.M, NORM_2, &w_M));
   PetscCall(VecDot(simulation.E_hk, simulation.J, &a_EJ));
   PetscCall(VecDot(simulation.M, simulation.B, &a_MB));
   w_E = 0.5 * POW2(w_E);

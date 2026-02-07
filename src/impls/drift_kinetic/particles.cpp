@@ -60,7 +60,6 @@ PetscErrorCode Particles::initialize_point_by_field(const Arr B_arr)
 
       dk_cell.emplace_back(point, B_p, mp, qm);
     }
-    cell.clear();
   }
 
   PetscFunctionReturn(PETSC_SUCCESS);
@@ -151,9 +150,6 @@ PetscErrorCode Particles::form_iteration()
       
       PetscReal v = std::sqrt((POW2(curr.p_parallel) + POW2(curr.p_perp)));
       Vector3R Vph(v, v, v);
-
-      //push.process(dt, curr, prev);
-      //Vph = (curr.r - prev.r) / dt;
 #if 0
       LOG("v_th = {}", v);
       LOG("v_drift = ({}, {}, {})", Vph.x(), Vph.y(), Vph.z());
@@ -166,12 +162,12 @@ PetscErrorCode Particles::form_iteration()
 
         dtau = std::min({dt - tau, dtx, dty, dtz});
 
-        LOG("dt - tau, dtx, dty, dtz = {}, {}, {}, {}", dt - tau, dtx, dty, dtz);
+        //LOG("dt - tau, dtx, dty, dtz = {}, {}, {}, {}", dt - tau, dtx, dty, dtz);
 
         push.process(dtau, curr, prev);
         Vph = (curr.r - prev.r) / dtau;
 
-        LOG("Vph.length(), v = {}, {}", Vph.length(), v);
+        //LOG("Vph.length(), v = {}, {}", Vph.length(), v);
 
         PetscReal path = (curr.r - prev.r).length();
         auto coords = cell_traversal(curr.r, prev.r);
@@ -186,7 +182,7 @@ PetscErrorCode Particles::form_iteration()
           call_abort(util.decomposition_J(rsn, rs0, Vph, a));
 
           PetscReal b = b0 * (rsn - rs0).length() / path;
-          call_abort(util.decomposition_M(rsn, b));
+          call_abort(util.decomposition_M(0.5 * (rs0 + rsn), b));
         }
         correct_coordinates(curr);
         prev = curr;
@@ -239,14 +235,8 @@ PetscErrorCode Particles::sync_dk_curr_storage()
       Vector3R B_p{};
       PetscCall(esirkepov.interpolate_B(B_p, point.r));
       PointByField point_by_field(point, B_p, mp, qm);
-#if 1
-      LOG("B_p = ({}, {}, {})", B_p.x(), B_p.y(), B_p.z());
-      LOG("r = ({}, {}, {})", point_by_field.r.x(), point_by_field.r.y(), point_by_field.r.z());
-      LOG("p_parallel = {}, p_perp = {}", point_by_field.p_parallel, point_by_field.p_perp);
-#endif
       dk_cell.emplace_back(point_by_field);
     }
-    cell.clear();
   }
 
   PetscCall(DMDAVecRestoreArrayRead(simulation_.da, simulation_.B_loc, &simulation_.B_arr));

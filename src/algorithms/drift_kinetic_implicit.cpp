@@ -3,6 +3,8 @@
 #include "src/algorithms/simple_interpolation.h"
 #include "src/utils/geometries.h"
 
+#define B_SPLINE 2
+
 PetscReal NGP_left(PetscReal s)
 {
   if (s < 0.5 && s >= -0.5)
@@ -29,7 +31,11 @@ constexpr PetscReal alpha = 1.0 / 6.0;
 PetscReal alongSBlong(PetscReal left_coeff, PetscReal left_s, //
   PetscReal right_coeff, PetscReal right_s)
 {
-  return alpha * (left_coeff * sfunc0(left_s) - right_coeff * sfunc0(right_s));
+  if (B_SPLINE == 2){
+    return alpha * (left_coeff * sfunc1(left_s) - right_coeff * sfunc1(right_s));
+  } else {
+    return alpha * (left_coeff * sfunc0(left_s) - right_coeff * sfunc0(right_s));
+  }
 }
 
 PetscReal alongSBshort(PetscReal left_coeff, PetscReal left_s, //
@@ -42,8 +48,13 @@ PetscReal alongSBshort(PetscReal left_coeff, PetscReal left_s, //
 PetscReal acrossSBfunc(PetscReal left_s0, PetscReal left_sn, //
   PetscReal right_s0, PetscReal right_sn)
 {
-  return sfunc11(left_s0, right_sn) + sfunc11(left_sn, right_s0) +
-    2 * (sfunc11(left_s0, right_s0) + sfunc11(left_sn, right_sn));
+  if (B_SPLINE == 2){
+    return sfunc22(left_s0, right_sn) + sfunc22(left_sn, right_s0) +
+      2 * (sfunc22(left_s0, right_s0) + sfunc22(left_sn, right_sn));
+  } else {
+    return sfunc11(left_s0, right_sn) + sfunc11(left_sn, right_s0) +
+      2 * (sfunc11(left_s0, right_s0) + sfunc11(left_sn, right_sn));
+  }
 }
 
 PetscReal acrossSEfunc(
@@ -185,14 +196,14 @@ PetscErrorCode DriftKineticEsirkepov::interpolate_E(
     p_Rsn[Z] != p_Rs0[Z] ? p_Rsn[Z] - p_Rs0[Z] : 1.0,
   };
 
-  PetscInt shr = 1;
+  PetscInt shr = 2;
   Vector3I p_g{
     (PetscInt)std::round(p_Rsmid[X]) - shr,
     (PetscInt)std::round(p_Rsmid[Y]) - shr,
     (PetscInt)std::round(p_Rsmid[Z]) - shr,
   };
 
-  PetscInt shw = 3;
+  PetscInt shw = 5;
 
   PetscCall(check_bounds_region(p_g, Vector3I{shw, shw, shw}, "interpolate_E"));
 
@@ -234,7 +245,11 @@ PetscErrorCode DriftKineticEsirkepov::interpolate_B(
   PetscFunctionBeginHot;
 
   ::Shape shape;
-  shape.setup(rn, 1., sfunc1);
+  if (B_SPLINE == 2) {
+    shape.setup(rn, 1.5, sfunc2);
+  } else {
+    shape.setup(rn, 1., sfunc1);
+  }
 
   PetscCall(check_bounds_region(shape.start, shape.size, "interpolate_B"));
 
@@ -295,14 +310,14 @@ PetscErrorCode DriftKineticEsirkepov::interpolate_gradB(
     (PetscInt)std::round(p_Rsmid[Z]),
   };
 
-  PetscInt shr = 1;
+  PetscInt shr = 2;
   Vector3I p_g{
     (PetscInt)std::round(p_Rsmid[X]) - shr,
     (PetscInt)std::round(p_Rsmid[Y]) - shr,
     (PetscInt)std::round(p_Rsmid[Z]) - shr,
   };
 
-  PetscInt shw = 3;
+  PetscInt shw = 5;
 
   PetscCall(check_bounds_region(p_g, Vector3I{shw, shw, shw}, "interpolate_gradB"));
 
@@ -319,36 +334,36 @@ PetscErrorCode DriftKineticEsirkepov::interpolate_gradB(
     PetscReal Sxx = alongSBx(p_dR[X], g_x + 0.5 - p_Rsmid[X], 0., 0.) *
                     acrossSBfunc(g_y + 0.5 - p_Rs0[Y], g_y + 0.5 - p_Rsn[Y],
                                  g_z + 0.5 - p_Rs0[Z], g_z + 0.5 - p_Rsn[Z]);
-    PetscReal Sxy = alongSBx(p_gs[X] + 0.5 - p_Rs0[X], g_x - 0.5 * (p_gs[X] + 0.5 + p_Rs0[X]),
-                             p_gs[X] + 0.5 - p_Rsn[X], g_x - 0.5 * (p_gs[X] + 0.5 + p_Rsn[X])) *
+    PetscReal Sxy = alongSBx(p_gs[X] + 0.5 - p_Rs0[X], g_x + 1. - 0.5 * (p_gs[X] + 0.5 + p_Rs0[X]),
+                             p_gs[X] + 0.5 - p_Rsn[X], g_x + 1. - 0.5 * (p_gs[X] + 0.5 + p_Rsn[X])) *
                     acrossSBfunc(g_y - p_Rs0[Y], g_y - p_Rsn[Y],
                                  g_z + 0.5 - p_Rs0[Z], g_z + 0.5 - p_Rsn[Z]);
-    PetscReal Sxz = alongSBx(p_gs[X] + 0.5 - p_Rs0[X], g_x - 0.5 * (p_gs[X] + 0.5 + p_Rs0[X]),
-                             p_gs[X] + 0.5 - p_Rsn[X], g_x - 0.5 * (p_gs[X] + 0.5 + p_Rsn[X])) *
+    PetscReal Sxz = alongSBx(p_gs[X] + 0.5 - p_Rs0[X], g_x + 1. - 0.5 * (p_gs[X] + 0.5 + p_Rs0[X]),
+                             p_gs[X] + 0.5 - p_Rsn[X], g_x + 1. - 0.5 * (p_gs[X] + 0.5 + p_Rsn[X])) *
                     acrossSBfunc(g_y + 0.5 - p_Rs0[Y], g_y + 0.5 - p_Rsn[Y],
                                  g_z - p_Rs0[Z], g_z - p_Rsn[Z]);
 
     PetscReal Syy = alongSBy(p_dR[Y], g_y + 0.5 - p_Rsmid[Y], 0., 0.) *
                     acrossSBfunc(g_z + 0.5 - p_Rs0[Z], g_z + 0.5 - p_Rsn[Z],
                                  g_x + 0.5 - p_Rs0[X], g_x + 0.5 - p_Rsn[X]);
-    PetscReal Syx = alongSBy(p_gs[Y] + 0.5 - p_Rs0[Y], g_y - 0.5 * (p_gs[Y] + 0.5 + p_Rs0[Y]),
-                             p_gs[Y] + 0.5 - p_Rsn[Y], g_y - 0.5 * (p_gs[Y] + 0.5 + p_Rsn[Y])) *
+    PetscReal Syx = alongSBy(p_gs[Y] + 0.5 - p_Rs0[Y], g_y + 1. - 0.5 * (p_gs[Y] + 0.5 + p_Rs0[Y]),
+                             p_gs[Y] + 0.5 - p_Rsn[Y], g_y + 1. - 0.5 * (p_gs[Y] + 0.5 + p_Rsn[Y])) *
                     acrossSBfunc(g_z + 0.5 - p_Rs0[Z], g_z + 0.5 - p_Rsn[Z],
                                  g_x - p_Rs0[X], g_x - p_Rsn[X]);
-    PetscReal Syz = alongSBy(p_gs[Y] + 0.5 - p_Rs0[Y], g_y - 0.5 * (p_gs[Y] + 0.5 + p_Rs0[Y]),
-                             p_gs[Y] + 0.5 - p_Rsn[Y], g_y - 0.5 * (p_gs[Y] + 0.5 + p_Rsn[Y])) *
+    PetscReal Syz = alongSBy(p_gs[Y] + 0.5 - p_Rs0[Y], g_y + 1. - 0.5 * (p_gs[Y] + 0.5 + p_Rs0[Y]),
+                             p_gs[Y] + 0.5 - p_Rsn[Y], g_y + 1. - 0.5 * (p_gs[Y] + 0.5 + p_Rsn[Y])) *
                     acrossSBfunc(g_z - p_Rs0[Z], g_z - p_Rsn[Z],
                                  g_x + 0.5 - p_Rs0[X], g_x + 0.5 - p_Rsn[X]);
 
     PetscReal Szz = alongSBz(p_dR[Z], g_z + 0.5 - p_Rsmid[Z], 0., 0.) *
                     acrossSBfunc(g_x + 0.5 - p_Rs0[X], g_x + 0.5 - p_Rsn[X],
                                  g_y + 0.5 - p_Rs0[Y], g_y + 0.5 - p_Rsn[Y]);
-    PetscReal Szx = alongSBz(p_gs[Z] + 0.5 - p_Rs0[Z], g_z - 0.5 * (p_gs[Z] + 0.5 + p_Rs0[Z]),
-                             p_gs[Z] + 0.5 - p_Rsn[Z], g_z - 0.5 * (p_gs[Z] + 0.5 + p_Rsn[Z])) *
+    PetscReal Szx = alongSBz(p_gs[Z] + 0.5 - p_Rs0[Z], g_z + 1. - 0.5 * (p_gs[Z] + 0.5 + p_Rs0[Z]),
+                             p_gs[Z] + 0.5 - p_Rsn[Z], g_z + 1. - 0.5 * (p_gs[Z] + 0.5 + p_Rsn[Z])) *
                     acrossSBfunc(g_x - p_Rs0[X], g_x - p_Rsn[X],
                                  g_y + 0.5 - p_Rs0[Y], g_y + 0.5 - p_Rsn[Y]);
-    PetscReal Szy = alongSBz(p_gs[Z] + 0.5 - p_Rs0[Z], g_z - 0.5 * (p_gs[Z] + 0.5 + p_Rs0[Z]),
-                             p_gs[Z] + 0.5 - p_Rsn[Z], g_z - 0.5 * (p_gs[Z] + 0.5 + p_Rsn[Z])) *
+    PetscReal Szy = alongSBz(p_gs[Z] + 0.5 - p_Rs0[Z], g_z + 1. - 0.5 * (p_gs[Z] + 0.5 + p_Rs0[Z]),
+                             p_gs[Z] + 0.5 - p_Rsn[Z], g_z + 1. - 0.5 * (p_gs[Z] + 0.5 + p_Rsn[Z])) *
                     acrossSBfunc(g_x + 0.5 - p_Rs0[X], g_x + 0.5 - p_Rsn[X],
                                  g_y - p_Rs0[Y], g_y - p_Rsn[Y]);
 
@@ -422,14 +437,14 @@ PetscErrorCode DriftKineticEsirkepov::decomposition_J(
     0.5 * (p_Rsn[Z] + p_Rs0[Z]),
   };
 
-  PetscInt shr = 1;
+  PetscInt shr = 2;
   Vector3I p_g{
     (PetscInt)std::round(p_Rsmid[X]) - shr,
     (PetscInt)std::round(p_Rsmid[Y]) - shr,
     (PetscInt)std::round(p_Rsmid[Z]) - shr,
   };
 
-  PetscInt shw = 3;
+  PetscInt shw = 5;
 
   PetscCall(check_bounds_region(p_g, Vector3I{shw, shw, shw}, "decomposition_J"));
 
@@ -471,7 +486,11 @@ PetscErrorCode DriftKineticEsirkepov::decomposition_M(
 {
   PetscFunctionBeginHot;
   ::Shape shape;
-  shape.setup(Rsn, 1., sfunc1);
+  if (B_SPLINE == 2) {
+    shape.setup(Rsn, 1.5, sfunc2);
+  } else {
+    shape.setup(Rsn, 1., sfunc1);
+  }
   PetscCall(check_bounds_region(shape.start, shape.size, "decomposition_M"));
 
   Vector3R B_p = {};
@@ -486,13 +505,13 @@ PetscErrorCode DriftKineticEsirkepov::decomposition_M(
     Vector3R M_shape = shape.magnetic(i);
 
 #pragma omp atomic update
-    M_g[g_z][g_y][g_x][X] += mu_p * b_p.x() * M_shape.x();
+    M_g[g_z][g_y][g_x][X] -= mu_p * b_p.x() * M_shape.x();
 
 #pragma omp atomic update
-    M_g[g_z][g_y][g_x][Y] += mu_p * b_p.y() * M_shape.y();
+    M_g[g_z][g_y][g_x][Y] -= mu_p * b_p.y() * M_shape.y();
 
 #pragma omp atomic update
-    M_g[g_z][g_y][g_x][Z] += mu_p * b_p.z() * M_shape.z();
+    M_g[g_z][g_y][g_x][Z] -= mu_p * b_p.z() * M_shape.z();
   }
   PetscFunctionReturn(PETSC_SUCCESS);
 }

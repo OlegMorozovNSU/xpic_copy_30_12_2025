@@ -32,12 +32,12 @@ int main(int argc, char** argv)
 
 void overwrite_config()
 {
-  dx = 0.1;
+  dx = 0.5;
   geom_nx = 10;
   geom_x = geom_nx * dx;
 
-  dt = 1.5;
-  geom_nt = 2;
+  dt = 0.1;
+  geom_nt = 20;
   geom_t = geom_nt * dt;
 
   Configuration::overwrite({
@@ -64,8 +64,8 @@ void overwrite_config()
       "Particles",
       {{
         {"sort_name", "electrons"},
-        {"Np", 1},
-        {"n", +1.0e-4},
+        {"Np", 100},
+        {"n", +1.0},
         {"q", -1.0},
         {"m", +1.0},
         {"T", +0.1},
@@ -89,10 +89,10 @@ void overwrite_config()
         {
           {"command", "SetParticles"},
           {"particles", "electrons"},
-          //{"coordinate", {{"name", "CoordinateInBox"}}},
-          //{"momentum", {{"name", "MaxwellianMomentum"}, {"tov", true}}},
-          {"momentum", {{"name", "PreciseMomentum"}, {"value", {0.1,0.1,0.01}}}},
-          {"coordinate", {{"name", "PreciseCoordinate"}, {"value", {0.5,0.5,0.5}}}},
+          {"coordinate", {{"name", "CoordinateInBox"}}},
+          {"momentum", {{"name", "MaxwellianMomentum"}, {"tov", true}}},
+          //{"momentum", {{"name", "PreciseMomentum"}, {"value", {0.1,0.1,0.01}}}},
+          //{"coordinate", {{"name", "PreciseCoordinate"}, {"value", {0.5,0.5,0.5}}}},
         },
       },
     },

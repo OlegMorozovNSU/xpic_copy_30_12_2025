@@ -80,6 +80,7 @@ public:
   PetscReal dF = 0;
   PetscReal a_EJ = 0;
   PetscReal a_MB = 0, a_MB0 = 0;
+  PetscReal w_M = 0;
 };
 
 }  // namespace drift_kinetic
