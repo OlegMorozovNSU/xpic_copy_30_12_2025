@@ -39,6 +39,7 @@ PetscErrorCode Simulation::initialize_implementation()
 
   Rotor rotor(da);
   PetscCall(rotor.create_positive(&rotE));
+  PetscCall(rotor.create_negative(&rotM));
   PetscCall(rotor.create_negative(&rotB));
   PetscCall(MatScale(rotB, -1)); /// @see `Simulation::form_function()`
 
@@ -66,6 +67,7 @@ PetscErrorCode Simulation::initialize_implementation()
   PetscCall(init_particles(*this, particles_));
 
   energy_cons = std::make_unique<EnergyConservation>(*this);
+  PetscCall(energy_cons->diagnose(0));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -92,6 +94,7 @@ PetscErrorCode Simulation::finalize()
 
   PetscCall(MatDestroy(&rotE));
   PetscCall(MatDestroy(&rotB));
+  PetscCall(MatDestroy(&rotM));
 
   PetscCall(SNESDestroy(&snes));
   PetscCall(VecDestroy(&sol));
@@ -127,10 +130,24 @@ PetscErrorCode Simulation::timestep_implementation(PetscInt t)
 
   for (auto& sort : particles_) {
     PetscCall(sort->update_cells());
-    //PetscCall(energy_cons->calc_kinetic_energy(sort));
+
+    LOG("after_iteration() start:");
+    PetscCall(DMGlobalToLocal(da, E, INSERT_VALUES, E_loc));
+    PetscCall(DMGlobalToLocal(da, B, INSERT_VALUES, B_loc));
+    PetscCall(DMDAVecGetArrayRead(da, E_loc, &E_arr));
+    PetscCall(DMDAVecGetArrayRead(da, B_loc, &B_arr));
+
+    sort->E_arr = E_arr;
+    sort->B_arr = B_arr;
+    PetscCall(sort->after_iteration());
+
+    PetscCall(DMDAVecRestoreArrayRead(da, E_loc, &E_arr));
+    PetscCall(DMDAVecRestoreArrayRead(da, B_loc, &B_arr));
+
+    LOG("after_iteration() end:");
   }
 
-  PetscCall(energy_cons->diagnose(t));
+  PetscCall(energy_cons->diagnose(t+dt));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -196,13 +213,6 @@ PetscErrorCode Simulation::form_current()
     PetscCall(VecAXPY(J, 1, sort->J));
     PetscCall(VecAXPY(M, 1, sort->M));
   }
-  PetscReal w_M, w_B = 0;
-  VecNorm(M, NORM_2, &w_M);
-  VecNorm(B, NORM_2, &w_B);
-
-  LOG("<M> = {}", w_M);
-  LOG("T/mc2*<B> = {}", 0.1/512*w_B);
-
 
   PetscCall(DMDAVecRestoreArrayRead(da, E_loc, &E_arr));
   PetscCall(DMDAVecRestoreArrayRead(da, B_loc, &B_arr));
@@ -216,10 +226,10 @@ PetscErrorCode Simulation::form_function(Vec vf)
   PetscCall(DMGetGlobalVector(da, &E_f));
   PetscCall(DMGetGlobalVector(da, &B_f));
 
-  // F(E) = (E^{n+1/2,k} - E^{n}) / (dt / 2) + J^{n+1/2,k} - rot(B^{n+1/2,k} + M^{n+1/2,k}})
+  // F(E) = (E^{n+1/2,k} - E^{n}) / (dt / 2) + J^{n+1/2,k} - rot(B^{n+1/2,k}) + rot(M^{n+1/2,k}})
   PetscCall(VecAXPBYPCZ(E_f, +2 / dt, -2 / dt, 0, E_hk, E));
   PetscCall(VecAXPY(E_f, +1, J));
-  PetscCall(MatMultAdd(rotB, M, E_f, E_f));
+  PetscCall(MatMultAdd(rotM, M, E_f, E_f));
   PetscCall(MatMultAdd(rotB, B_hk, E_f, E_f));
 
   // F(B) = (B^{n+1/2,k} - B^{n}) / (dt / 2) + rot(E^{n+1/2,k})
@@ -308,11 +318,13 @@ PetscErrorCode EnergyConservation::diagnose(PetscInt t)
     w_E = 0.5 * POW2(w_E);
     w_B = 0.5 * POW2(w_B);
     dF = a_EJ = 0;
+    K = simulation.particles_[0]->kinetic_energy_local();
   }
 
   w_E0 = w_E;
   w_B0 = w_B;
   a_MB0 = a_MB;
+  K0 = K;
   PetscCall(TableDiagnostic::diagnose(t));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
@@ -327,8 +339,15 @@ PetscErrorCode EnergyConservation::add_columns(PetscInt t)
   PetscCall(VecDot(simulation.M, simulation.B, &a_MB));
   w_E = 0.5 * POW2(w_E);
   w_B = 0.5 * POW2(w_B);
-  dF = (w_E - w_E0) + (w_B - w_B0) - (a_MB - a_MB0);
-  add(13, "dE+dB+dK", "{: .6e}", dF + dt * a_EJ);
+  K = simulation.particles_[0]->kinetic_energy_local();
+
+  dF = (w_E - w_E0) + (w_B - w_B0);
+
+  add(13, "dK", "{: .6e}", (K - K0));
+  add(13, "dE", "{: .6e}", (w_E - w_E0));
+  add(13, "dB", "{: .6e}", (w_B - w_B0));
+  add(13, "dE+dB+dK", "{: .6e}", dF + (K - K0));
+  add(13, "dE+dB+dMB-dEJ", "{: .6e}", dF - (a_MB - a_MB0) + dt * a_EJ);
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

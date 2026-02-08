@@ -63,6 +63,8 @@ protected:
   Vec sol;
   SNES snes;
 
+  Mat rotM;
+
   friend class EnergyConservation;
   friend class Particles;
   std::unique_ptr<EnergyConservation> energy_cons;
@@ -81,6 +83,7 @@ public:
   PetscReal a_EJ = 0;
   PetscReal a_MB = 0, a_MB0 = 0;
   PetscReal w_M = 0;
+  PetscReal K0 = 0, K = 0;
 };
 
 }  // namespace drift_kinetic

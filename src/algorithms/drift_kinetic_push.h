@@ -31,6 +31,8 @@ public:
   /// @brief Nonlinear move of point `pn` by timestep shift `dt`.
   /// @warning `pn` and `p0` cannot be the same as `pn` will be updated.
   void process(PetscReal dt, PointByField& pn, const PointByField& p0);
+  /// @brief Adjusts the perpendicular momentum using magnetic field magnitudes.
+  void update_v_perp(PointByField& pn);
 
   PetscReal get_Delta(const PointByField& p0) {return get_F(p0)*Vh;}
 
@@ -50,8 +52,6 @@ private:
 
   /// @brief Updates the spatial position using drift velocity `Vp`.
   void update_r(PetscReal dt, PointByField& pn, const PointByField& p0) const;
-  /// @brief Adjusts the perpendicular momentum using magnetic field magnitudes.
-  void update_v_perp(PointByField& pn, const PointByField& p0);
   /// @brief Advances the parallel momentum using the drift-kinetic equation.
   void update_v_parallel(PetscReal dt, PointByField& pn, const PointByField& p0) const;
   PetscReal get_F(const PointByField& p0) const;
@@ -83,7 +83,7 @@ private:
   Vector3R meanB;
 
   /// @brief Unit vector aligned with `Bh`.
-  Vector3R bh, b0, bn;
+  Vector3R bh, b0;
   /// @brief Magnitude of the magnetic field.
   PetscReal lenBh;
 };

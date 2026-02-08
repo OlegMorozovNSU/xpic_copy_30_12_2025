@@ -65,6 +65,20 @@ PetscErrorCode Particles::initialize_point_by_field(const Arr B_arr)
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
+PetscReal Particles::kinetic_energy_local() const
+{
+  PetscReal w = 0.0;
+  const PetscReal mpw = parameters.n / static_cast<PetscReal>(parameters.Np);
+#pragma omp parallel for reduction(+ : w)
+  for (auto&& cell : dk_curr_storage) {
+    for (auto&& point : cell) {
+      w += (POW2(point.p_parallel) + POW2(point.p_perp));
+    }
+  }
+  return 0.5 * parameters.m * mpw * w;
+}
+
+
 PetscErrorCode Particles::form_iteration()
 {
   PetscFunctionBeginUser;
@@ -182,7 +196,7 @@ PetscErrorCode Particles::form_iteration()
           call_abort(util.decomposition_J(rsn, rs0, Vph, a));
 
           PetscReal b = b0 * (rsn - rs0).length() / path;
-          call_abort(util.decomposition_M(0.5 * (rs0 + rsn), b));
+          call_abort(util.decomposition_M(rsn, b));
         }
         correct_coordinates(curr);
         prev = curr;
@@ -200,6 +214,51 @@ PetscErrorCode Particles::form_iteration()
   PetscCall(DMLocalToGlobal(da, J_loc, ADD_VALUES, J));
   PetscCall(DMLocalToGlobal(da, M_loc, ADD_VALUES, M));
   PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+PetscErrorCode Particles::after_iteration() {
+  PetscFunctionBeginUser;
+
+  PetscReal q = parameters.q;
+  PetscReal m = parameters.m;
+
+  DriftKineticEsirkepov util(nullptr, B_arr, nullptr, nullptr);
+
+#pragma omp parallel for
+  for (PetscInt g = 0; g < (PetscInt)dk_curr_storage.size(); ++g) {
+
+    PetscInt i = 0;
+    for (auto& curr : dk_curr_storage[g]) {
+
+      DriftKineticPush push(q / m, m);
+
+      push.set_fields_callback(
+        [&](const Vector3R& r0, const Vector3R& rn, Vector3R& E_p, Vector3R& B_p,
+          Vector3R& gradB_p) {
+          E_p = {};
+          B_p = {};
+          gradB_p = {};
+          Vector3R Es_p, Bs_p, gradBs_p;
+
+          Vector3R pos = (rn - r0);
+          PetscInt path = pos.length();
+          auto coords = cell_traversal(rn, r0);
+
+          for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
+            auto&& rs0 = coords[s - 1];
+            auto&& rsn = coords[s - 0];
+            util.interpolate(Es_p, Bs_p, gradBs_p, rsn, rs0);
+
+            PetscReal beta = path > 0 ? (rsn - rs0).length() / path : 1.0;
+            B_p += Bs_p * beta;
+          }
+        });
+
+    push.update_v_perp(curr);
+    i++;
+  }
+}
+PetscFunctionReturn(PETSC_SUCCESS);
 }
 
 PetscReal Particles::n_Np(const PointByField& point) const

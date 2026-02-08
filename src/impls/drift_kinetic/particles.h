@@ -16,7 +16,10 @@ public:
   PetscErrorCode sync_dk_curr_storage();
   PetscErrorCode prepare_storage();
   PetscErrorCode form_iteration();
+  PetscErrorCode after_iteration();
   PetscErrorCode initialize_point_by_field(const Arr B_arr);
+  PetscReal kinetic_energy_local() const;
+
 
   Vec M;
   Vec M_loc;
