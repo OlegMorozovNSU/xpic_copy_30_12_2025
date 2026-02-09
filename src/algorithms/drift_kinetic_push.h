@@ -63,8 +63,8 @@ private:
   /// @brief Iteration counters and tolerances.
   PetscInt it = 0;
   PetscInt maxit = 30;
-  PetscReal atol = 1e-7;
-  PetscReal rtol = 1e-7;
+  PetscReal atol = 1e-10;
+  PetscReal rtol = 1e-10;
   PetscReal Rn, Vn;
   PetscReal R0, V0;
 

@@ -9,6 +9,7 @@ set(tests
   drift_kinetic_interpolation_ex1
   drift_kinetic_interpolation_ex2
   drift_kinetic_interpolation_ex3
+  drift_kinetic_interpolation_ex4
   drift_kinetic_grid_boris_ex1
   drift_kinetic_grid_boris_ex2
   drift_kinetic_grid_boris_ex3
@@ -17,7 +18,7 @@ set(tests
 )
 
 # In the given tests (Omega * dt) is constant
-set(omega_dt 0.1)
+set(omega_dt 1)
 
 foreach(test ${tests})
   add_executable(${test}.out ${test}.cpp)

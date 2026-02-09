@@ -11,6 +11,10 @@
 #include "src/utils/configuration.h"
 #include "src/impls/eccapfim/cell_traversal.h"
 
+#include <string>
+#include <string_view>
+#include <vector>
+
 constexpr PetscReal q = -1.0;
 constexpr PetscReal m = +1.0;
 
@@ -642,137 +646,295 @@ PetscErrorCode print_statistics(ComparisonStats& stats,
 
 namespace implicit_test_utils {
 
-  using namespace drift_kinetic_test_utils;
+using namespace drift_kinetic_test_utils;
 
-  using FieldFn = std::function<void(const Vector3R&, Vector3R&, Vector3R&, Vector3R&)>;
+using FieldFn = std::function<void(const Vector3R&, Vector3R&, Vector3R&, Vector3R&)>;
 
-  struct InterpCase {
-    Vector3R r0;
-    Vector3R rn;
-    FieldFn analytic_fn;
-    FieldFn grid_fn;
+struct InterpTolerance {
+  PetscReal E = PETSC_SMALL;
+  PetscReal B = PETSC_SMALL;
+  PetscReal gradB = PETSC_SMALL;
+};
+
+struct InterpTrajectory {
+  std::string_view name = "";
+  Vector3R r0;
+  Vector3R rn;
+};
+
+struct InterpCase {
+  std::string name = "";
+  Vector3R r0;
+  Vector3R rn;
+  FieldFn analytic_fn;
+  FieldFn grid_fn;
+  InterpTolerance tol = {};
+};
+
+inline void evaluate_segment_average_gauss3(
+  const FieldFn& field_fn,
+  const Vector3R& rs0,
+  const Vector3R& rsn,
+  Vector3R& E_avg,
+  Vector3R& B_avg,
+  Vector3R& gradB_avg)
+{
+  constexpr PetscReal g = 0.7745966692414834;  // sqrt(3/5)
+  constexpr PetscReal t1 = 0.5 * (1.0 - g);
+  constexpr PetscReal t2 = 0.5;
+  constexpr PetscReal t3 = 0.5 * (1.0 + g);
+  constexpr PetscReal w1 = 5.0 / 18.0;
+  constexpr PetscReal w2 = 8.0 / 18.0;
+  constexpr PetscReal w3 = 5.0 / 18.0;
+
+  E_avg = {};
+  B_avg = {};
+  gradB_avg = {};
+
+  Vector3R dR = rsn - rs0;
+  auto eval = [&](PetscReal t, PetscReal w) {
+    Vector3R r = rs0 + dR * t;
+    Vector3R E_p, B_p, gradB_p;
+    field_fn(r, E_p, B_p, gradB_p);
+    E_avg += E_p * w;
+    B_avg += B_p * w;
+    gradB_avg += gradB_p * w;
   };
 
-  PetscErrorCode interpolation_test(const InterpCase& test_param) {
-    PetscFunctionBeginUser;
+  eval(t1, w1);
+  eval(t2, w2);
+  eval(t3, w3);
+}
 
-    overwrite_config(5.0, 5.0, 5.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+inline Vector3R yee_pos_ex(const Vector3R& r)
+{
+  return {r.x() + 0.5 * dx, r.y(), r.z()};
+}
 
-    FieldContext context;
+inline Vector3R yee_pos_ey(const Vector3R& r)
+{
+  return {r.x(), r.y() + 0.5 * dy, r.z()};
+}
 
-    PetscCall(context.initialize([&](PetscInt i, PetscInt j, PetscInt k, Vector3R& E_g, Vector3R& B_g, Vector3R& gradB_g) {
-      test_param.grid_fn(Vector3R(i * dx, j * dy, k * dz), E_g, B_g, gradB_g);
-    }));
+inline Vector3R yee_pos_ez(const Vector3R& r)
+{
+  return {r.x(), r.y(), r.z() + 0.5 * dz};
+}
 
-    DriftKineticEsirkepov esirkepov(
-      context.E_arr, context.B_arr, nullptr, nullptr);
+inline Vector3R yee_pos_bx(const Vector3R& r)
+{
+  return {r.x(), r.y() + 0.5 * dy, r.z() + 0.5 * dz};
+}
 
-    esirkepov.set_dBidrj(context.dBdx_arr, context.dBdy_arr, context.dBdz_arr);
+inline Vector3R yee_pos_by(const Vector3R& r)
+{
+  return {r.x() + 0.5 * dx, r.y(), r.z() + 0.5 * dz};
+}
 
-    auto f_grid = [&](const Vector3R& r0, const Vector3R& rn, Vector3R& E_p, Vector3R& B_p,
-          Vector3R& gradB_p) {
-          E_p = {};
-          B_p = {};
-          gradB_p = {};
-          Vector3R Es_p, Bs_p, gradBs_p;
+inline Vector3R yee_pos_bz(const Vector3R& r)
+{
+  return {r.x() + 0.5 * dx, r.y() + 0.5 * dy, r.z()};
+}
 
-          Vector3R pos = (rn - r0);
-          PetscInt path = pos.length();
-          auto coords = cell_traversal(rn, r0);
-          PetscInt segments = (PetscInt)coords.size() - 1;
-
-          if (segments <= 0) {
-            segments = 1;
-          }
-
-          pos[X] = pos[X] != 0 ? pos[X] / dx : (PetscReal)segments;
-          pos[Y] = pos[Y] != 0 ? pos[Y] / dy : (PetscReal)segments;
-          pos[Z] = pos[Z] != 0 ? pos[Z] / dz : (PetscReal)segments;
-
-          for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
-            auto&& rs0 = coords[s - 1];
-            auto&& rsn = coords[s - 0];
-            esirkepov.interpolate(Es_p, Bs_p, gradBs_p, rsn, rs0);
-
-            PetscReal beta = path > 0 ? (rsn - rs0).length() / path : 1.0;
-            E_p += Es_p * beta;
-            B_p += Bs_p * beta;
-            gradB_p += gradBs_p.elementwise_division(pos);
-          }
-        };
-
-    auto f_analytical = [&](const Vector3R& r0, const Vector3R& rn, Vector3R& E_p, Vector3R& B_p,
-          Vector3R& gradB_p) {
-          E_p = {};
-          B_p = {};
-          gradB_p = {};
-          Vector3R Es_p, Bs_p, gradBs_p;
-
-          Vector3R pos = (rn - r0);
-          PetscInt path = pos.length();
-          auto coords = cell_traversal(rn, r0);
-          PetscInt segments = (PetscInt)coords.size() - 1;
-
-          if (segments <= 0) {
-            segments = 1;
-          }
-
-          pos[X] = pos[X] != 0 ? pos[X] : (PetscReal)segments;
-          pos[Y] = pos[Y] != 0 ? pos[Y] : (PetscReal)segments;
-          pos[Z] = pos[Z] != 0 ? pos[Z] : (PetscReal)segments;
-
-          for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
-            auto&& rs0 = coords[s - 1];
-            auto&& rsn = coords[s - 0];
-            test_param.analytic_fn(rsn, Es_p, Bs_p, gradBs_p);
-
-            Vector3R drs{
-              rsn[X] != rs0[X] ? rsn[X] - rs0[X] : 1.0,
-              rsn[Y] != rs0[Y] ? rsn[Y] - rs0[Y] : 1.0,
-              rsn[Z] != rs0[Z] ? rsn[Z] - rs0[Z] : 1.0,
-            };
-
-            PetscReal beta = path > 0 ? (rsn - rs0).length() / path : 1.0;
-            E_p += Es_p * beta;
-            B_p += Bs_p * beta;
-            gradB_p += gradBs_p.elementwise_product(drs).elementwise_division(pos);
-          }
-        };
-
-    Vector3R pos_old(test_param.r0);
-    Vector3R pos_new(test_param.rn);
-
-    Vector3R E_p, B_p, gradB_p;
-
-    f_grid(test_param.r0, test_param.rn, E_p, B_p, gradB_p);
-
-    Vector3R E_e, B_e, gradB_e;
-    f_analytical(test_param.r0, test_param.rn, E_e, B_e, gradB_e);
-    //test_param.analytic_fn(pos_new, E_e, B_e, gradB_e);
-
-  #if 1
-    LOG("Test position: ({:.3f}, {:.3f}, {:.3f})", REP3_A(pos_new));
-    LOG("Electric field:");
-    LOG("  Expected:     ({:.6f}, {:.6f}, {:.6f})", REP3_A(E_e));
-    LOG("  Interpolated: ({:.6f}, {:.6f}, {:.6f})", REP3_A(E_p));
-    LOG("Magnetic field:");
-    LOG("  Expected:     ({:.6f}, {:.6f}, {:.6f})", REP3_A(B_e));
-    LOG("  Interpolated: ({:.6f}, {:.6f}, {:.6f})", REP3_A(B_p));
-    LOG("Gradient B field:");
-    LOG("  Expected:     ({:.15f}, {:.15f}, {:.15f})", REP3_A(gradB_e));
-    LOG("  Interpolated: ({:.15f}, {:.15f}, {:.15f})", REP3_A(gradB_p));
-  #endif
-    PetscCheck(equal_tol(E_p, E_e, PETSC_SMALL), PETSC_COMM_WORLD, PETSC_ERR_USER,
-      "Electric field interpolation failed. Expected: (%.8e %.8e %.8e), got: (%.8e %.8e %.8e)", REP3_A(E_e), REP3_A(E_p));
-
-    PetscCheck(equal_tol(B_p, B_e, PETSC_SMALL), PETSC_COMM_WORLD, PETSC_ERR_USER,
-      "Magnetic field interpolation failed. Expected: (%.8e %.8e %.8e), got: (%.8e %.8e %.8e)", REP3_A(B_e), REP3_A(B_p));
-
-    PetscCheck(equal_tol(gradB_p, gradB_e, PETSC_SMALL), PETSC_COMM_WORLD, PETSC_ERR_USER,
-      "Gradient B field interpolation failed. Expected: (%.15e %.15e %.15e), got: (%.15e %.15e %.15e)", REP3_A(gradB_e), REP3_A(gradB_p));
-
-    PetscCall(context.finalize());
-    return PETSC_SUCCESS;
+inline Vector3R grad_abs_b(
+  const Vector3R& B, const Vector3R& dBdx, const Vector3R& dBdy, const Vector3R& dBdz)
+{
+  PetscReal lenB = B.length();
+  if (lenB < PETSC_MACHINE_EPSILON) {
+    return {};
   }
+  return {
+    B.dot(dBdx) / lenB,
+    B.dot(dBdy) / lenB,
+    B.dot(dBdz) / lenB,
+  };
+}
+
+inline const std::vector<InterpTrajectory>& interpolation_full_trajectories()
+{
+  static const std::vector<InterpTrajectory> trajectories{
+    {"in_one_cell_1", {1.0, 1.0, 1.0}, {1.5, 1.3, 2.0}},
+    {"in_one_cell_2", {1.8, 1.6, 1.4}, {1.5, 1.3, 2.0}},
+    {"without_displace_1", {1.0, 1.0, 1.0}, {2.0, 1.0, 1.0}},
+    {"without_displace_2", {1.0, 1.0, 1.0}, {2.0, 1.0, 2.0}},
+    {"without_displace_3", {1.0, 1.0, 1.0}, {2.0, 2.0, 1.0}},
+    {"without_displace_4", {1.4, 1.4, 1.4}, {2.0, 1.4, 1.4}},
+    {"without_displace_5", {1.4, 1.4, 1.4}, {1.4, 1.4, 1.4}},
+    {"in_several_cells_1", {1.0, 1.0, 1.0}, {2.5, 1.3, 2.0}},
+    {"in_several_cells_2", {1.0, 1.0, 1.0}, {2.5, 2.3, 2.0}},
+    {"in_several_cells_3", {1.0, 1.0, 1.0}, {2.5, 2.3, 2.4}},
+    {"in_several_cells_4", {1.0, 1.0, 1.0}, {2.5, 2.3, 3.4}},
+    {"without_displace_in_several_cells_1", {1.0, 1.0, 1.0}, {1.0, 2.3, 2.0}},
+  };
+  return trajectories;
+}
+
+inline const std::vector<InterpTrajectory>& interpolation_nonlinear_trajectories()
+{
+  static const std::vector<InterpTrajectory> trajectories{
+    {"nonlinear_in_one_cell_1", {1.0, 1.0, 1.0}, {1.5, 1.3, 2.0}},
+    {"nonlinear_without_displace_1", {1.0, 1.0, 1.0}, {2.0, 1.0, 1.0}},
+    {"nonlinear_without_displace_2", {1.0, 1.0, 1.0}, {1.0, 2.3, 2.0}},
+    {"nonlinear_without_displace_3", {1.4, 1.4, 1.4}, {1.4, 1.4, 1.4}},
+    {"nonlinear_in_several_cells_1", {1.0, 1.0, 1.0}, {2.5, 2.3, 2.4}},
+    {"nonlinear_in_several_cells_2", {1.0, 1.0, 1.0}, {2.0, 2.3, 3.4}},
+  };
+  return trajectories;
+}
+
+PetscErrorCode interpolation_test(const InterpCase& test_param)
+{
+  PetscFunctionBeginUser;
+
+  const std::string case_name = test_param.name.empty() ? "unnamed_case" : test_param.name;
+
+  overwrite_config(10.0, 10.0, 10.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+
+  FieldContext context;
+
+  PetscCall(context.initialize([&](PetscInt i, PetscInt j, PetscInt k,
+                            Vector3R& E_g, Vector3R& B_g, Vector3R& gradB_g) {
+    test_param.grid_fn(Vector3R(i * dx, j * dy, k * dz), E_g, B_g, gradB_g);
+  }));
+
+  DriftKineticEsirkepov esirkepov(
+    context.E_arr, context.B_arr, nullptr, nullptr);
+
+  esirkepov.set_dBidrj(context.dBdx_arr, context.dBdy_arr, context.dBdz_arr);
+
+  auto f_grid = [&](const Vector3R& r0, const Vector3R& rn,
+                    Vector3R& E_p, Vector3R& B_p, Vector3R& gradB_p) {
+    E_p = {};
+    B_p = {};
+    gradB_p = {};
+    Vector3R Es_p, Bs_p, gradBs_p;
+
+    Vector3R pos = (rn - r0);
+    PetscReal path = pos.length();
+    auto coords = cell_traversal(rn, r0);
+    PetscInt segments = (PetscInt)coords.size() - 1;
+
+    if (segments <= 0) {
+      segments = 1;
+    }
+
+    pos[X] = pos[X] != 0 ? pos[X] / dx : (PetscReal)segments;
+    pos[Y] = pos[Y] != 0 ? pos[Y] / dy : (PetscReal)segments;
+    pos[Z] = pos[Z] != 0 ? pos[Z] / dz : (PetscReal)segments;
+
+    for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
+      auto&& rs0 = coords[s - 1];
+      auto&& rsn = coords[s - 0];
+      esirkepov.interpolate(Es_p, Bs_p, gradBs_p, rsn, rs0);
+
+      PetscReal beta = path > 0 ? (rsn - rs0).length() / path : 1.0;
+      E_p += Es_p * beta;
+      B_p += Bs_p * beta;
+      gradB_p += gradBs_p.elementwise_division(pos);
+    }
+  };
+
+  auto f_analytical = [&](const Vector3R& r0, const Vector3R& rn,
+                          Vector3R& E_p, Vector3R& B_p, Vector3R& gradB_p) {
+    E_p = {};
+    B_p = {};
+    gradB_p = {};
+
+    Vector3R pos = (rn - r0);
+    PetscReal path = pos.length();
+    auto coords = cell_traversal(rn, r0);
+    PetscInt segments = (PetscInt)coords.size() - 1;
+
+    if (segments <= 0) {
+      segments = 1;
+    }
+
+    pos[X] = pos[X] != 0 ? pos[X] : (PetscReal)segments;
+    pos[Y] = pos[Y] != 0 ? pos[Y] : (PetscReal)segments;
+    pos[Z] = pos[Z] != 0 ? pos[Z] : (PetscReal)segments;
+
+    for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
+      auto&& rs0 = coords[s - 1];
+      auto&& rsn = coords[s - 0];
+
+      Vector3R Es_avg, B_dummy, gradB_dummy;
+      evaluate_segment_average_gauss3(
+        test_param.analytic_fn, rs0, rsn, Es_avg, B_dummy, gradB_dummy);
+
+      Vector3R Es_end, Bs_end, gradBs_end;
+      test_param.analytic_fn(rsn, Es_end, Bs_end, gradBs_end);
+
+      Vector3R drs{
+        rsn[X] != rs0[X] ? rsn[X] - rs0[X] : 1.0,
+        rsn[Y] != rs0[Y] ? rsn[Y] - rs0[Y] : 1.0,
+        rsn[Z] != rs0[Z] ? rsn[Z] - rs0[Z] : 1.0,
+      };
+
+      PetscReal beta = path > 0 ? (rsn - rs0).length() / path : 1.0;
+      E_p += Es_avg * beta;
+      B_p += Bs_end * beta;
+      gradB_p += gradBs_end.elementwise_product(drs).elementwise_division(pos);
+    }
+  };
+
+  Vector3R E_p, B_p, gradB_p;
+  f_grid(test_param.r0, test_param.rn, E_p, B_p, gradB_p);
+
+  Vector3R E_e, B_e, gradB_e;
+  f_analytical(test_param.r0, test_param.rn, E_e, B_e, gradB_e);
+
+#if 1
+  LOG("Interpolation case: {}", case_name);
+  LOG("Test position: ({:.3f}, {:.3f}, {:.3f})", REP3_A(test_param.rn));
+  LOG("Electric field:");
+  LOG("  Expected:     ({:.6f}, {:.6f}, {:.6f})", REP3_A(E_e));
+  LOG("  Interpolated: ({:.6f}, {:.6f}, {:.6f})", REP3_A(E_p));
+  LOG("Magnetic field:");
+  LOG("  Expected:     ({:.6f}, {:.6f}, {:.6f})", REP3_A(B_e));
+  LOG("  Interpolated: ({:.6f}, {:.6f}, {:.6f})", REP3_A(B_p));
+  LOG("Gradient B field:");
+  LOG("  Expected:     ({:.15f}, {:.15f}, {:.15f})", REP3_A(gradB_e));
+  LOG("  Interpolated: ({:.15f}, {:.15f}, {:.15f})", REP3_A(gradB_p));
+#endif
+
+  PetscCheck(equal_tol(E_p, E_e, test_param.tol.E), PETSC_COMM_WORLD, PETSC_ERR_USER,
+    "Electric field interpolation failed in case '%s'. Expected: (%.8e %.8e %.8e), got: (%.8e %.8e %.8e)",
+    case_name.c_str(), REP3_A(E_e), REP3_A(E_p));
+
+  PetscCheck(equal_tol(B_p, B_e, test_param.tol.B), PETSC_COMM_WORLD, PETSC_ERR_USER,
+    "Magnetic field interpolation failed in case '%s'. Expected: (%.8e %.8e %.8e), got: (%.8e %.8e %.8e)",
+    case_name.c_str(), REP3_A(B_e), REP3_A(B_p));
+
+  PetscCheck(equal_tol(gradB_p, gradB_e, test_param.tol.gradB), PETSC_COMM_WORLD, PETSC_ERR_USER,
+    "Gradient B interpolation failed in case '%s'. Expected: (%.15e %.15e %.15e), got: (%.15e %.15e %.15e)",
+    case_name.c_str(), REP3_A(gradB_e), REP3_A(gradB_p));
+
+  PetscCall(context.finalize());
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+PetscErrorCode run_interpolation_profile(
+  std::string_view profile_name,
+  const std::vector<InterpTrajectory>& trajectories,
+  const FieldFn& analytic_fn,
+  const FieldFn& grid_fn,
+  const InterpTolerance& tol = {})
+{
+  PetscFunctionBeginUser;
+  LOG("Running interpolation profile: {}", profile_name);
+  for (const auto& trajectory : trajectories) {
+    std::string case_name = std::string(profile_name) + "::" + std::string(trajectory.name);
+    InterpCase test{
+      .name = case_name,
+      .r0 = trajectory.r0,
+      .rn = trajectory.rn,
+      .analytic_fn = analytic_fn,
+      .grid_fn = grid_fn,
+      .tol = tol,
+    };
+    PetscCall(interpolation_test(test));
+  }
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
 
 } // namespace implicit_test_utils

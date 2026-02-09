@@ -29,11 +29,11 @@ int main(int argc, char** argv)
   PetscReal omega_dt;
   PetscCall(get_omega_dt(omega_dt));
 
-  dx = 0.1;
+  dx = 0.01;
   dt = omega_dt / B_min;
   geom_nx = (PetscInt)(2 * L / dx);
 
-  overwrite_config(2 * Rc, 2 * Rc, 2 * L, 10*dt, dx, dx, dx, dt, dt);
+  overwrite_config(2 * Rc, 2 * Rc, 2 * L, 300*dt, dx, dx, dx, dt, dt);
 
   FieldContext context;
 

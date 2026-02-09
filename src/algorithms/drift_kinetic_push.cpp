@@ -129,7 +129,6 @@ void DriftKineticPush::update_v_parallel(PetscReal dt, PointByField& pn, const P
 
 PetscReal DriftKineticPush::get_F(const PointByField& p0) const {
   PetscReal F = (std::abs(Vh) < 1e-12) ?  0. : - p0.mu_p * (bh - b0).dot(meanB) / Vh;
-  LOG("F = {}", F);
   return F;
 }
 
@@ -141,10 +140,8 @@ PetscReal DriftKineticPush::get_v_parallel(const PointByField& p0) const {
 
 void DriftKineticPush::update_fields(const PointByField& pn, const PointByField& p0) {
   Vector3R Edummy, gradBdummy;
-  #if 1
   set_fields(p0.r, p0.r, Edummy, B0, gradBdummy);
   set_fields(p0.r, pn.r, Eh, Bh, gradBh);
-  #endif
   meanB = 0.5 * (Bh + B0);
   bh = Bh.normalized(), b0 = B0.normalized();
   lenBh = Bh.length();
