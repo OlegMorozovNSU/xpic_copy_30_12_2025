@@ -32,7 +32,7 @@ public:
   /// @warning `pn` and `p0` cannot be the same as `pn` will be updated.
   void process(PetscReal dt, PointByField& pn, const PointByField& p0);
   /// @brief Adjusts the perpendicular momentum using magnetic field magnitudes.
-  void update_v_perp(PointByField& pn);
+  void update_v_perp(PointByField& pn, const PointByField& p0);
 
   PetscReal get_Delta(const PointByField& p0) {return get_F(p0)*Vh;}
 

@@ -37,7 +37,7 @@ void overwrite_config()
   geom_x = geom_nx * dx;
 
   dt = 0.1;
-  geom_nt = 20;
+  geom_nt = 10;
   geom_t = geom_nt * dt;
 
   Configuration::overwrite({
@@ -64,7 +64,7 @@ void overwrite_config()
       "Particles",
       {{
         {"sort_name", "electrons"},
-        {"Np", 10},
+        {"Np", 1},
         {"n", +1.0},
         {"q", -1.0},
         {"m", +1.0},
@@ -82,7 +82,7 @@ void overwrite_config()
             "setter",
             {
               {"name", "SetUniformField"},
-              {"value", {0.0, 0.0, 1.0}},
+              {"value", {0.0, 0.0, 1.}},
             },
           },
         },

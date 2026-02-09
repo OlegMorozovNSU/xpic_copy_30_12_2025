@@ -199,7 +199,7 @@ PetscErrorCode Particles::form_iteration()
           call_abort(util.decomposition_M(rsn, b));
         }
         correct_coordinates(curr);
-        prev = curr;
+        //prev = curr;
       }
 
       ++i;
@@ -226,9 +226,11 @@ PetscErrorCode Particles::after_iteration() {
 
 #pragma omp parallel for
   for (PetscInt g = 0; g < (PetscInt)dk_curr_storage.size(); ++g) {
+    const auto& prev_cell = dk_prev_storage[g];
 
     PetscInt i = 0;
     for (auto& curr : dk_curr_storage[g]) {
+      auto prev(prev_cell[i]);
 
       DriftKineticPush push(q / m, m);
 
@@ -238,7 +240,7 @@ PetscErrorCode Particles::after_iteration() {
           E_p = {};
           B_p = {};
           gradB_p = {};
-          Vector3R Es_p, Bs_p, gradBs_p;
+          Vector3R Bs_p;
 
           Vector3R pos = (rn - r0);
           PetscInt path = pos.length();
@@ -247,14 +249,14 @@ PetscErrorCode Particles::after_iteration() {
           for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
             auto&& rs0 = coords[s - 1];
             auto&& rsn = coords[s - 0];
-            util.interpolate(Es_p, Bs_p, gradBs_p, rsn, rs0);
+            util.interpolate_B(Bs_p, rsn);
 
             PetscReal beta = path > 0 ? (rsn - rs0).length() / path : 1.0;
             B_p += Bs_p * beta;
           }
         });
 
-    push.update_v_perp(curr);
+    push.update_v_perp(curr, prev);
     i++;
   }
 }

@@ -398,20 +398,18 @@ PetscErrorCode DriftKineticEsirkepov::interpolate(Vector3R& E_p, Vector3R& B_p,
   PetscCall(interpolate_E(E_p, rn, r0));
   PetscCall(interpolate_B(B_p, rn));
   auto b_p = B_p.normalized();
-  if (!gradB_g) {
-    PetscCall(interpolate_gradB(gradB_p, b_p, rn, r0));
-  }
-  else {
-    ::Shape shape;
-    shape.setup(rn, 1.0, sfunc1);
-    SimpleInterpolation interpolation(shape);
-    SimpleInterpolation::Context e_fields;
-    SimpleInterpolation::Context gradB_fields;
-    if (gradB_g != nullptr) {
-      gradB_fields.emplace_back(gradB_p, gradB_g);
-    }
-    interpolation.process(e_fields, gradB_fields);
-  }
+  PetscCall(interpolate_gradB(gradB_p, b_p, rn, r0));
+  //else {
+  //  ::Shape shape;
+  //  shape.setup(rn, 1.0, sfunc1);
+  //  SimpleInterpolation interpolation(shape);
+  //  SimpleInterpolation::Context e_fields;
+  //  SimpleInterpolation::Context gradB_fields;
+  //  if (gradB_g != nullptr) {
+  //    gradB_fields.emplace_back(gradB_p, gradB_g);
+  //  }
+  //  interpolation.process(e_fields, gradB_fields);
+  //}
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

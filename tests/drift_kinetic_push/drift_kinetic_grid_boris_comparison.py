@@ -36,7 +36,7 @@ def main():
     )
     parser.add_argument(
         "--test",
-        default="drift_kinetic_grid_boris_ex5",
+        default="drift_kinetic_grid_boris_ex4",
         help="Имя теста (например, drift_kinetic_grid_boris_ex5).",
     )
     parser.add_argument(

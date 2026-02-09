@@ -74,11 +74,11 @@ void get_fields(const Vector3R&, const Vector3R& pos, //
 namespace gaussian_magnetic_mirror {
 
 constexpr PetscReal B_min = 1.0;
-constexpr PetscReal B_max = 3.0;
-constexpr PetscReal L = 2.0;      // Half the length of the trap
-constexpr PetscReal W = 1.35;      // Mirror width
+constexpr PetscReal B_max = 4.0;
+constexpr PetscReal L = 1.0;      // Half the length of the trap
+constexpr PetscReal W = 0.5;      // Mirror width
 constexpr PetscReal S = POW2(W);  // Mirror width squared
-constexpr PetscReal Rc = 0.04;
+constexpr PetscReal Rc = 0.1;
 
 PetscReal exp(PetscReal z, PetscReal z0)
 {

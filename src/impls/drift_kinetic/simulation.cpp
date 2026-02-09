@@ -67,13 +67,13 @@ PetscErrorCode Simulation::initialize_implementation()
   PetscCall(init_particles(*this, particles_));
 
   energy_cons = std::make_unique<EnergyConservation>(*this);
-  PetscCall(energy_cons->diagnose(0));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
 PetscErrorCode Simulation::finalize()
 {
   PetscFunctionBeginUser;
+  PetscCall(energy_cons->diagnose(geom_nt)); 
   PetscCall(interfaces::Simulation::finalize());
 
   PetscCall(VecDestroy(&E));
@@ -108,6 +108,7 @@ PetscErrorCode Simulation::timestep_implementation(PetscInt t)
   PetscFunctionBeginUser;
   for (auto& sort : particles_)
     PetscCall(sort->prepare_storage());
+  PetscCall(energy_cons->diagnose(t));  
 
   LOG("to_snes():");
   /// @note Solution is initialized with guess before it is passed into `SNESSolve()`.
@@ -129,7 +130,6 @@ PetscErrorCode Simulation::timestep_implementation(PetscInt t)
   PetscCall(VecAXPBY(B, 2, -1, B_hk));
 
   for (auto& sort : particles_) {
-    PetscCall(sort->update_cells());
 
     LOG("after_iteration() start:");
     PetscCall(DMGlobalToLocal(da, E, INSERT_VALUES, E_loc));
@@ -145,9 +145,9 @@ PetscErrorCode Simulation::timestep_implementation(PetscInt t)
     PetscCall(DMDAVecRestoreArrayRead(da, B_loc, &B_arr));
 
     LOG("after_iteration() end:");
+    PetscCall(sort->update_cells());
   }
 
-  PetscCall(energy_cons->diagnose(t+dt));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -311,16 +311,6 @@ EnergyConservation::EnergyConservation(const Simulation& simulation)
 PetscErrorCode EnergyConservation::diagnose(PetscInt t)
 {
   PetscFunctionBeginUser;
-  if (t == 0) {
-    PetscCall(VecNorm(simulation.E, NORM_2, &w_E));
-    PetscCall(VecNorm(simulation.B, NORM_2, &w_B));
-    PetscCall(VecDot(simulation.M, simulation.B, &a_MB));
-    w_E = 0.5 * POW2(w_E);
-    w_B = 0.5 * POW2(w_B);
-    dF = a_EJ = 0;
-    K = simulation.particles_[0]->kinetic_energy_local();
-  }
-
   w_E0 = w_E;
   w_B0 = w_B;
   a_MB0 = a_MB;
@@ -347,7 +337,9 @@ PetscErrorCode EnergyConservation::add_columns(PetscInt t)
   add(13, "dE", "{: .6e}", (w_E - w_E0));
   add(13, "dB", "{: .6e}", (w_B - w_B0));
   add(13, "dE+dB+dK", "{: .6e}", dF + (K - K0));
-  add(13, "dE+dB+dMB-dEJ", "{: .6e}", dF - (a_MB - a_MB0) + dt * a_EJ);
+  add(13, "dMB", "{: .6e}", (a_MB - a_MB0));
+  add(13, "dt * a_EJ", "{: .6e}", (dt * a_EJ));
+  add(16, "dE+dB-dMB+dt*dEJ", "{: .6e}", dF - (a_MB - a_MB0) + dt * a_EJ);
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

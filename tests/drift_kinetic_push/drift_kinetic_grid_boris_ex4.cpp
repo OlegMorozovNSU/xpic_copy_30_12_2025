@@ -29,9 +29,9 @@ int main(int argc, char** argv)
   PetscReal omega_dt;
   PetscCall(get_omega_dt(omega_dt));
 
-  dx = 0.00125;
+  dx = 0.1;
   dt = omega_dt / B_min;
-  geom_nx = (PetscInt )(2 * L / dx);
+  geom_nx = (PetscInt)(2 * L / dx);
 
   overwrite_config(2 * Rc, 2 * Rc, 2 * L, 10*dt, dx, dx, dx, dt, dt);
 
@@ -59,24 +59,25 @@ int main(int argc, char** argv)
         B_p = {};
         gradB_p = {};
         Vector3R Es_p, Bs_p, gradBs_p;
-        Vector3R E_dummy, B_dummy, gradB_dummy;
 
         Vector3R pos = (rn - r0);
+        PetscReal path = pos.length();
 
-        auto coords = cell_traversal_new(rn, r0);
-        PetscInt Nsegments = (PetscInt)coords.size() - 1;
+        auto coords = cell_traversal_old(rn, r0);
+        PetscInt segments = (PetscInt)coords.size() - 1;
+        if (segments <= 0) {
+          segments = 1;
+        }
 
-        pos[X] = pos[X] != 0 ? pos[X] : Nsegments;
-        pos[Y] = pos[Y] != 0 ? pos[Y] : Nsegments;
-        pos[Z] = pos[Z] != 0 ? pos[Z] : Nsegments;
-
-        get_analytical_fields(r0, rn, E_dummy, B_p, gradB_dummy);
+        pos[X] = pos[X] != 0 ? pos[X] : segments;
+        pos[Y] = pos[Y] != 0 ? pos[Y] : segments;
+        pos[Z] = pos[Z] != 0 ? pos[Z] : segments;
 
       for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
         auto&& rs0 = coords[s - 1];
         auto&& rsn = coords[s - 0];
 
-        get_analytical_fields(rs0, rsn, Es_p, B_dummy, gradBs_p);
+        get_analytical_fields(rs0, rsn, Es_p, Bs_p, gradBs_p);
 
         Vector3R drs{
           rsn[X] != rs0[X] ? rsn[X] - rs0[X] : 1.0,
@@ -84,11 +85,11 @@ int main(int argc, char** argv)
           rsn[Z] != rs0[Z] ? rsn[Z] - rs0[Z] : 1.0,
         };
 
-        E_p += Es_p.elementwise_product(drs);
-        gradB_p += gradBs_p.elementwise_product(drs);
+        PetscReal beta = path > 0 ? (rsn - rs0).length() / path : 1.0;
+        E_p += Es_p * beta;
+        B_p += Bs_p * beta;
+        gradB_p += gradBs_p.elementwise_product(drs).elementwise_division(pos);
       }
-      E_p = E_p.elementwise_division(pos);
-      gradB_p = gradB_p.elementwise_division(pos);
       };
 
     auto f_grid = [&](const Vector3R& r0, const Vector3R& rn, //
@@ -97,30 +98,31 @@ int main(int argc, char** argv)
       B_p = {};
       gradB_p = {};
       Vector3R Es_p, Bs_p, gradBs_p;
-      Vector3R E_dummy, B_dummy, gradB_dummy;
 
       Vector3R pos = (rn - r0);
+      PetscReal path = pos.length();
 
-      auto coords = cell_traversal_new(rn, r0);
-      PetscInt Nsegments = (PetscInt)coords.size() - 1;
+      auto coords = cell_traversal_old(rn, r0);
+      PetscInt segments = (PetscInt)coords.size() - 1;
+      if (segments <= 0) {
+        segments = 1;
+      }
 
-      pos[X] = pos[X] != 0 ? pos[X] / dx : Nsegments;
-      pos[Y] = pos[Y] != 0 ? pos[Y] / dy : Nsegments;
-      pos[Z] = pos[Z] != 0 ? pos[Z] / dz : Nsegments;
-
-      esirkepov.interpolate(E_dummy, B_p, gradB_dummy, rn, r0);
+      pos[X] = pos[X] != 0 ? pos[X] / dx : segments;
+      pos[Y] = pos[Y] != 0 ? pos[Y] / dy : segments;
+      pos[Z] = pos[Z] != 0 ? pos[Z] / dz : segments;
 
       for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
         auto&& rs0 = coords[s - 1];
         auto&& rsn = coords[s - 0];
 
-        esirkepov.interpolate(Es_p, B_dummy, gradBs_p, rsn, rs0);
+        esirkepov.interpolate(Es_p, Bs_p, gradBs_p, rsn, rs0);
 
-        E_p += Es_p;
-        gradB_p += gradBs_p;
+        PetscReal beta = path > 0 ? (rsn - rs0).length() / path : 1.0;
+        E_p += Es_p * beta;
+        B_p += Bs_p * beta;
+        gradB_p += gradBs_p.elementwise_division(pos);
       }
-      E_p = E_p.elementwise_division(pos);
-      gradB_p = gradB_p.elementwise_division(pos);
     };
 
   Vector3R B0{
@@ -189,14 +191,6 @@ int main(int argc, char** argv)
 
       LOG("t={} b·gradB: anal={:.6e} grid={:.6e} b·Vp(=Vh): anal={:.6e} grid={:.6e}",
         t, bgradB_analytical, bgradB_grid, Vh_analytical, Vh_grid);
-    }
-
-    if (t < 20) {
-      Vector3R b_analytical = B_analytical.normalized();
-      Vector3R b_grid = B_grid.normalized();
-      PetscReal bgradB_analytical = b_analytical.dot(gradB_analytical);
-      PetscReal bgradB_grid = b_grid.dot(gradB_grid);
-      LOG("t={} b·gradB: anal={:.6e} grid={:.6e}", t, bgradB_analytical, bgradB_grid);
     }
 
     update_comparison_stats(stats,  //
