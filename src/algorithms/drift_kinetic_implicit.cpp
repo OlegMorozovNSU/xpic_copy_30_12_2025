@@ -243,7 +243,7 @@ PetscErrorCode DriftKineticEsirkepov::interpolate_B(
   Vector3R& B_p, const Vector3R& rn)
 {
   PetscFunctionBeginHot;
-
+  B_p = {};
   ::Shape shape;
   if (B_SPLINE == 2) {
     shape.setup(rn, 1.5, sfunc2);
@@ -399,17 +399,7 @@ PetscErrorCode DriftKineticEsirkepov::interpolate(Vector3R& E_p, Vector3R& B_p,
   PetscCall(interpolate_B(B_p, rn));
   auto b_p = B_p.normalized();
   PetscCall(interpolate_gradB(gradB_p, b_p, rn, r0));
-  //else {
-  //  ::Shape shape;
-  //  shape.setup(rn, 1.0, sfunc1);
-  //  SimpleInterpolation interpolation(shape);
-  //  SimpleInterpolation::Context e_fields;
-  //  SimpleInterpolation::Context gradB_fields;
-  //  if (gradB_g != nullptr) {
-  //    gradB_fields.emplace_back(gradB_p, gradB_g);
-  //  }
-  //  interpolation.process(e_fields, gradB_fields);
-  //}
+
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

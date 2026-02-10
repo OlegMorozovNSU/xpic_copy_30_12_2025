@@ -37,7 +37,7 @@ void overwrite_config()
   geom_x = geom_nx * dx;
 
   dt = 0.1;
-  geom_nt = 10;
+  geom_nt = 20;
   geom_t = geom_nt * dt;
 
   Configuration::overwrite({
