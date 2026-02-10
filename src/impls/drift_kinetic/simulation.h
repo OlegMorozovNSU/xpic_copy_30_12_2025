@@ -44,6 +44,9 @@ protected:
 
   Vec M;
 
+  Vec Mn;
+  PetscReal VgradB = 0.;
+
   Vec dBdx;
   Vec dBdx_loc;
   Arr dBdx_arr;
@@ -82,8 +85,9 @@ public:
   PetscReal dF = 0;
   PetscReal a_EJ = 0;
   PetscReal a_MB = 0, a_MB0 = 0;
-  PetscReal w_M = 0;
+  PetscReal w_M = 0, w_Mn = 0;
   PetscReal K0 = 0, K = 0;
+  bool initialized = false;
 };
 
 }  // namespace drift_kinetic

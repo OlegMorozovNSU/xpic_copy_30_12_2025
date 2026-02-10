@@ -18,7 +18,7 @@ set(tests
 )
 
 # In the given tests (Omega * dt) is constant
-set(omega_dt 1)
+set(omega_dt 0.1)
 
 foreach(test ${tests})
   add_executable(${test}.out ${test}.cpp)

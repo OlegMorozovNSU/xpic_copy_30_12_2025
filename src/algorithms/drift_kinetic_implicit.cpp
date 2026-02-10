@@ -502,13 +502,13 @@ PetscErrorCode DriftKineticEsirkepov::decomposition_M(
 
     Vector3R M_shape = shape.magnetic(i);
 
-#pragma omp atomic update
+#pragma omp atomic
     M_g[g_z][g_y][g_x][X] -= mu_p * b_p.x() * M_shape.x();
 
-#pragma omp atomic update
+#pragma omp atomic
     M_g[g_z][g_y][g_x][Y] -= mu_p * b_p.y() * M_shape.y();
 
-#pragma omp atomic update
+#pragma omp atomic
     M_g[g_z][g_y][g_x][Z] -= mu_p * b_p.z() * M_shape.z();
   }
   PetscFunctionReturn(PETSC_SUCCESS);

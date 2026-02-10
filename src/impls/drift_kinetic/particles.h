@@ -25,6 +25,12 @@ public:
   Vec M_loc;
   Arr M_arr;
 
+  Vec Mn;
+  Vec Mn_loc;
+  Arr Mn_arr;
+
+  PetscReal VgradB;
+
 protected:
   PetscReal n_Np(const PointByField& point) const;
   PetscReal qn_Np(const PointByField& point) const;

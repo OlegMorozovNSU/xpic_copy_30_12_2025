@@ -7,18 +7,62 @@ static constexpr char help[] =
 using namespace drift_kinetic_test_utils;
 using namespace gaussian_magnetic_mirror;
 
+namespace {
+
+constexpr PetscReal segment_eps = 1e-14;
+
+constexpr PetscReal tol_E_interp = 1e-8;
+constexpr PetscReal tol_B_interp = 5e-3;
+constexpr PetscReal tol_gradB_interp = 5e-2;
+
+constexpr PetscReal tol_z = 5e-2;
+constexpr PetscReal tol_par = 5e-2;
+constexpr PetscReal tol_mu = 5e-2;
+constexpr PetscReal tol_energy = 5e-2;
+
+void eval_point_field(
+  const Vector3R& r, Vector3R& E_p, Vector3R& B_p, Vector3R& gradB_p)
+{
+  get_fields(r, r, E_p, B_p, gradB_p);
+  E_p = {0.0, 0.0, 0.0};
+}
+
+void eval_grid_field_yee(
+  const Vector3R& r, Vector3R& E_p, Vector3R& B_p, Vector3R& gradB_p)
+{
+  Vector3R E_ex, E_ey, E_ez;
+  Vector3R B_ex, B_ey, B_ez;
+  Vector3R E_bx, E_by, E_bz;
+  Vector3R B_bx, B_by, B_bz;
+  Vector3R grad_dummy;
+
+  eval_point_field(implicit_test_utils::yee_pos_ex(r), E_ex, B_ex, grad_dummy);
+  eval_point_field(implicit_test_utils::yee_pos_ey(r), E_ey, B_ey, grad_dummy);
+  eval_point_field(implicit_test_utils::yee_pos_ez(r), E_ez, B_ez, grad_dummy);
+
+  eval_point_field(implicit_test_utils::yee_pos_bx(r), E_bx, B_bx, grad_dummy);
+  eval_point_field(implicit_test_utils::yee_pos_by(r), E_by, B_by, grad_dummy);
+  eval_point_field(implicit_test_utils::yee_pos_bz(r), E_bz, B_bz, grad_dummy);
+
+  E_p = {E_ex.x(), E_ey.y(), E_ez.z()};
+  B_p = {B_bx.x(), B_by.y(), B_bz.z()};
+
+  Vector3R E_center, B_center;
+  eval_point_field(r, E_center, B_center, gradB_p);
+}
+
+}  // namespace
+
 void get_analytical_fields(const Vector3R&, const Vector3R& rn, Vector3R& E_p,
   Vector3R& B_p, Vector3R& gradB_p)
 {
-  get_fields(rn, rn, E_p, B_p, gradB_p);
-  E_p = {0.0, 0.0, 0.0};
+  eval_point_field(rn, E_p, B_p, gradB_p);
 }
 
 void get_grid_fields(const Vector3R&, const Vector3R& rn, Vector3R& E_p,
   Vector3R& B_p, Vector3R& gradB_p)
 {
-  get_grid(rn, rn, E_p, B_p, gradB_p);
-  E_p = {0.0, 0.0, 0.0};
+  eval_grid_field_yee(rn, E_p, B_p, gradB_p);
 } 
 
 int main(int argc, char** argv)
@@ -33,7 +77,7 @@ int main(int argc, char** argv)
   dt = omega_dt / B_min;
   geom_nx = (PetscInt)(2 * L / dx);
 
-  overwrite_config(2 * Rc, 2 * Rc, 2 * L, 300*dt, dx, dx, dx, dt, dt);
+  overwrite_config(2 * Rc, 2 * Rc, 2 * L, 3000*dt, dx, dx, dx, dt, dt);
 
   FieldContext context;
 
@@ -63,19 +107,28 @@ int main(int argc, char** argv)
         Vector3R pos = (rn - r0);
         PetscReal path = pos.length();
 
-        auto coords = cell_traversal_old(rn, r0);
+        auto coords = cell_traversal(rn, r0);
         PetscInt segments = (PetscInt)coords.size() - 1;
         if (segments <= 0) {
           segments = 1;
         }
 
-        pos[X] = pos[X] != 0 ? pos[X] : segments;
-        pos[Y] = pos[Y] != 0 ? pos[Y] : segments;
-        pos[Z] = pos[Z] != 0 ? pos[Z] : segments;
+        pos[X] = pos[X] != 0 ? pos[X] : (PetscReal)segments;
+        pos[Y] = pos[Y] != 0 ? pos[Y] : (PetscReal)segments;
+        pos[Z] = pos[Z] != 0 ? pos[Z] : (PetscReal)segments;
+
+        Vector3R E_dummy, gradB_dummy;
+        eval_point_field(rn, E_dummy, B_p, gradB_dummy);
 
       for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
         auto&& rs0 = coords[s - 1];
         auto&& rsn = coords[s - 0];
+
+        Vector3R dseg = rsn - rs0;
+        PetscReal seg_path = dseg.length();
+        if (seg_path < segment_eps) {
+          continue;
+        }
 
         get_analytical_fields(rs0, rsn, Es_p, Bs_p, gradBs_p);
 
@@ -85,9 +138,8 @@ int main(int argc, char** argv)
           rsn[Z] != rs0[Z] ? rsn[Z] - rs0[Z] : 1.0,
         };
 
-        PetscReal beta = path > 0 ? (rsn - rs0).length() / path : 1.0;
+        PetscReal beta = path > 0 ? seg_path / path : 1.0;
         E_p += Es_p * beta;
-        B_p += Bs_p * beta;
         gradB_p += gradBs_p.elementwise_product(drs).elementwise_division(pos);
       }
       };
@@ -102,34 +154,39 @@ int main(int argc, char** argv)
       Vector3R pos = (rn - r0);
       PetscReal path = pos.length();
 
-      auto coords = cell_traversal_old(rn, r0);
+      auto coords = cell_traversal(rn, r0);
       PetscInt segments = (PetscInt)coords.size() - 1;
       if (segments <= 0) {
         segments = 1;
       }
 
-      pos[X] = pos[X] != 0 ? pos[X] / dx : segments;
-      pos[Y] = pos[Y] != 0 ? pos[Y] / dy : segments;
-      pos[Z] = pos[Z] != 0 ? pos[Z] / dz : segments;
+      pos[X] = pos[X] != 0 ? pos[X] / dx : (PetscReal)segments;
+      pos[Y] = pos[Y] != 0 ? pos[Y] / dy : (PetscReal)segments;
+      pos[Z] = pos[Z] != 0 ? pos[Z] / dz : (PetscReal)segments;
+
+      Vector3R E_dummy, gradB_dummy;
+      esirkepov.interpolate(E_dummy, B_p, gradB_dummy, rn, r0);
 
       for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
         auto&& rs0 = coords[s - 1];
         auto&& rsn = coords[s - 0];
 
+        Vector3R dseg = rsn - rs0;
+        PetscReal seg_path = dseg.length();
+        if (seg_path < segment_eps) {
+          continue;
+        }
+
         esirkepov.interpolate(Es_p, Bs_p, gradBs_p, rsn, rs0);
 
-        PetscReal beta = path > 0 ? (rsn - rs0).length() / path : 1.0;
+        PetscReal beta = path > 0 ? seg_path / path : 1.0;
         E_p += Es_p * beta;
-        B_p += Bs_p * beta;
         gradB_p += gradBs_p.elementwise_division(pos);
       }
     };
 
-  Vector3R B0{
-    -0.5 * (r0.x() - Rc) * get_dBz_dz(r0.z() - L),
-    -0.5 * (r0.y() - Rc) * get_dBz_dz(r0.z() - L),
-    get_Bz_corr(r0),
-  };
+  Vector3R E0, B0, gradB0;
+  eval_point_field(r0, E0, B0, gradB0);
 
   Vector3R B0_anal = B0;
   PointByField point_analytical(point_init, B0_anal, m, q / m);
@@ -174,10 +231,41 @@ int main(int argc, char** argv)
     push_grid.process(dt, point_grid, point_grid_old);
     boris_step(push_boris, point_boris, get_analytical_fields);
 
+    PetscCheck(std::abs(point_analytical.z() - L) <= L, PETSC_COMM_WORLD, PETSC_ERR_USER,
+      "Particle must not escape magnetic mirror! z = %.6e, allowed max = %.6e", point_analytical.z() - L, L);
+
+    PetscCheck(std::abs(point_grid.z() - L) <= L, PETSC_COMM_WORLD, PETSC_ERR_USER,
+      "Grid particle must not escape magnetic mirror! z = %.6e, allowed max = %.6e", point_grid.z() - L, L);
+
+    PetscCheck(std::abs(point_boris.z() - L) <= L, PETSC_COMM_WORLD, PETSC_ERR_USER,
+      "Boris particle must not escape magnetic mirror! z = %.6e, allowed max = %.6e", point_boris.z() - L, L);
+
     f_anal(point_analytical_old.r, point_analytical.r,
       E_analytical, B_analytical, gradB_analytical);
 
     f_grid(point_grid_old.r, point_grid.r, E_grid, B_grid, gradB_grid);
+
+    {
+      const Vector3R probe_r0 = point_grid_old.r;
+      const Vector3R probe_rn = point_grid.r;
+      Vector3R E_probe_anal, B_probe_anal, gradB_probe_anal;
+      Vector3R E_probe_grid, B_probe_grid, gradB_probe_grid;
+
+      f_anal(probe_r0, probe_rn, E_probe_anal, B_probe_anal, gradB_probe_anal);
+      f_grid(probe_r0, probe_rn, E_probe_grid, B_probe_grid, gradB_probe_grid);
+
+      PetscCheck(equal_tol(E_probe_grid, E_probe_anal, tol_E_interp), PETSC_COMM_WORLD, PETSC_ERR_USER,
+        "Segment E mismatch for identical trajectory. Analytical: (%.8e %.8e %.8e), grid: (%.8e %.8e %.8e)",
+        REP3_A(E_probe_anal), REP3_A(E_probe_grid));
+
+      PetscCheck(equal_tol(B_probe_grid, B_probe_anal, tol_B_interp), PETSC_COMM_WORLD, PETSC_ERR_USER,
+        "Segment B mismatch for identical trajectory. Analytical: (%.8e %.8e %.8e), grid: (%.8e %.8e %.8e)",
+        REP3_A(B_probe_anal), REP3_A(B_probe_grid));
+
+      PetscCheck(equal_tol(gradB_probe_grid, gradB_probe_anal, tol_gradB_interp), PETSC_COMM_WORLD, PETSC_ERR_USER,
+        "Segment gradB mismatch for identical trajectory. Analytical: (%.8e %.8e %.8e), grid: (%.8e %.8e %.8e)",
+        REP3_A(gradB_probe_anal), REP3_A(gradB_probe_grid));
+    }
 
     if (t < 20) {
       Vector3R b_analytical = B_analytical.normalized();
@@ -197,6 +285,19 @@ int main(int argc, char** argv)
       point_analytical, point_grid, point_boris,  //
       B_analytical, gradB_analytical, B_grid, gradB_grid);
   }
+
+  PetscCheck(stats.max_err_z <= tol_z, PETSC_COMM_WORLD, PETSC_ERR_USER,
+    "Drift vs Boris z mismatch too high: max_err_z=%.8e, tol=%.8e", stats.max_err_z, tol_z);
+
+  PetscCheck(stats.max_err_par <= tol_par, PETSC_COMM_WORLD, PETSC_ERR_USER,
+    "Drift vs Boris p_parallel mismatch too high: max_err_par=%.8e, tol=%.8e", stats.max_err_par, tol_par);
+
+  PetscCheck(stats.max_err_mu <= tol_mu, PETSC_COMM_WORLD, PETSC_ERR_USER,
+    "Drift vs Boris mu mismatch too high: max_err_mu=%.8e, tol=%.8e", stats.max_err_mu, tol_mu);
+
+  PetscCheck(stats.max_err_energy <= tol_energy, PETSC_COMM_WORLD, PETSC_ERR_USER,
+    "Drift vs Boris energy mismatch too high: max_err_energy=%.8e, tol=%.8e",
+    stats.max_err_energy, tol_energy);
 
   PetscCall(print_statistics(stats, point_analytical, point_grid, point_boris));
 

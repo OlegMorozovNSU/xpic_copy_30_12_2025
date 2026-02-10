@@ -23,8 +23,10 @@ Particles::Particles(Simulation& simulation, const SortParameters& parameters)
 
   PetscCallAbort(PETSC_COMM_WORLD, DMCreateGlobalVector(da, &J));
   PetscCallAbort(PETSC_COMM_WORLD, DMCreateGlobalVector(da, &M));
+  PetscCallAbort(PETSC_COMM_WORLD, DMCreateGlobalVector(da, &Mn));
   PetscCallAbort(PETSC_COMM_WORLD, DMCreateLocalVector(da, &J_loc));
   PetscCallAbort(PETSC_COMM_WORLD, DMCreateLocalVector(da, &M_loc));
+  PetscCallAbort(PETSC_COMM_WORLD, DMCreateLocalVector(da, &Mn_loc));
 }
 
 PetscErrorCode Particles::finalize()
@@ -32,8 +34,10 @@ PetscErrorCode Particles::finalize()
   PetscFunctionBeginUser;
   PetscCall(VecDestroy(&J));
   PetscCall(VecDestroy(&M));
+  PetscCall(VecDestroy(&Mn));
   PetscCall(VecDestroy(&J_loc));
   PetscCall(VecDestroy(&M_loc));
+  PetscCall(VecDestroy(&Mn_loc));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -84,6 +88,7 @@ PetscErrorCode Particles::form_iteration()
   PetscFunctionBeginUser;
   PetscCall(DMDAVecGetArrayWrite(da, J_loc, &J_arr));
   PetscCall(DMDAVecGetArrayWrite(da, M_loc, &M_arr));
+  PetscCall(DMDAVecGetArrayWrite(da, Mn_loc, &Mn_arr));
   PetscCall(DMDAVecGetArrayRead(da, simulation_.dBdx_loc, &simulation_.dBdx_arr));
   PetscCall(DMDAVecGetArrayRead(da, simulation_.dBdy_loc, &simulation_.dBdy_arr));
   PetscCall(DMDAVecGetArrayRead(da, simulation_.dBdz_loc, &simulation_.dBdz_arr));
@@ -111,10 +116,11 @@ PetscErrorCode Particles::form_iteration()
   };
 
   DriftKineticEsirkepov util(E_arr, B_arr, J_arr, M_arr);
+  DriftKineticEsirkepov util_temp(nullptr, B_arr, nullptr, Mn_arr);
   util.set_dBidrj_precomputed(simulation_.dBdx_arr, simulation_.dBdy_arr, simulation_.dBdz_arr);
   //PetscCall(util.set_bounds(world.gstart, world.gsize));
 
-#pragma omp parallel for
+#pragma omp parallel for reduction(+ : VgradB)
   for (PetscInt g = 0; g < (PetscInt)dk_curr_storage.size(); ++g) {
     const auto& prev_cell = dk_prev_storage[g];
 
@@ -138,7 +144,7 @@ PetscErrorCode Particles::form_iteration()
           Vector3R Es_p, Bs_p, gradBs_p;
 
           Vector3R pos = (rn - r0);
-          PetscInt path = pos.length();
+          PetscReal path = pos.length();
           auto coords = cell_traversal(rn, r0);
           PetscInt segments = (PetscInt)coords.size() - 1;
 
@@ -197,22 +203,25 @@ PetscErrorCode Particles::form_iteration()
 
           PetscReal b = b0 * (rsn - rs0).length() / path;
           call_abort(util.decomposition_M(rsn, b));
+          call_abort(util_temp.decomposition_M(rs0, b));
         }
         correct_coordinates(curr);
-        //prev = curr;
+        prev = curr;
       }
-
+      VgradB += push.get_VgradB(curr);
       ++i;
     }
   }
 
   PetscCall(DMDAVecRestoreArrayWrite(da, J_loc, &J_arr));
   PetscCall(DMDAVecRestoreArrayWrite(da, M_loc, &M_arr));
+  PetscCall(DMDAVecRestoreArrayWrite(da, Mn_loc, &Mn_arr));
   PetscCall(DMDAVecRestoreArrayRead(da, simulation_.dBdx_loc, &simulation_.dBdx_arr));
   PetscCall(DMDAVecRestoreArrayRead(da, simulation_.dBdy_loc, &simulation_.dBdy_arr));
   PetscCall(DMDAVecRestoreArrayRead(da, simulation_.dBdz_loc, &simulation_.dBdz_arr));
   PetscCall(DMLocalToGlobal(da, J_loc, ADD_VALUES, J));
   PetscCall(DMLocalToGlobal(da, M_loc, ADD_VALUES, M));
+  PetscCall(DMLocalToGlobal(da, Mn_loc, ADD_VALUES, Mn));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -243,7 +252,7 @@ PetscErrorCode Particles::after_iteration() {
           Vector3R Bs_p;
 
           Vector3R pos = (rn - r0);
-          PetscInt path = pos.length();
+          PetscReal path = pos.length();
           auto coords = cell_traversal(rn, r0);
 
           for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {

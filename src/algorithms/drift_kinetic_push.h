@@ -35,6 +35,7 @@ public:
   void update_v_perp(PointByField& pn, const PointByField& p0);
 
   PetscReal get_Delta(const PointByField& p0) {return get_F(p0)*Vh;}
+  PetscReal get_VgradB(const PointByField& p0) const {return p0.mu_p*Vp.dot(gradBh);}
 
 private:
 

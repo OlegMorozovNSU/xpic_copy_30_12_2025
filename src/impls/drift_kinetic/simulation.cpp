@@ -23,6 +23,7 @@ PetscErrorCode Simulation::initialize_implementation()
   PetscCall(DMCreateGlobalVector(da, &B0));
   PetscCall(DMCreateGlobalVector(da, &J));
   PetscCall(DMCreateGlobalVector(da, &M));
+  PetscCall(DMCreateGlobalVector(da, &Mn));
   PetscCall(DMCreateGlobalVector(da, &dBdx));
   PetscCall(DMCreateGlobalVector(da, &dBdy));
   PetscCall(DMCreateGlobalVector(da, &dBdz));
@@ -81,6 +82,7 @@ PetscErrorCode Simulation::finalize()
   PetscCall(VecDestroy(&B0));
   PetscCall(VecDestroy(&J));
   PetscCall(VecDestroy(&M));
+  PetscCall(VecDestroy(&Mn));
   PetscCall(VecDestroy(&dBdx));
   PetscCall(VecDestroy(&dBdy));
   PetscCall(VecDestroy(&dBdz));
@@ -193,12 +195,17 @@ PetscErrorCode Simulation::form_current()
   PetscFunctionBeginUser;
   PetscCall(VecSet(J, 0.0));
   PetscCall(VecSet(M, 0.0));
+  PetscCall(VecSet(Mn, 0.0));
+  VgradB = 0.;
 
   for (auto& sort : particles_) {
     PetscCall(VecSet(sort->J, 0.0));
     PetscCall(VecSet(sort->M, 0.0));
+    PetscCall(VecSet(sort->Mn, 0.0));
     PetscCall(VecSet(sort->J_loc, 0.0));
     PetscCall(VecSet(sort->M_loc, 0.0));
+    PetscCall(VecSet(sort->Mn_loc, 0.0));
+    sort->VgradB = 0.;
   }
 
   PetscCall(DMGlobalToLocal(da, E_hk, INSERT_VALUES, E_loc));
@@ -212,6 +219,8 @@ PetscErrorCode Simulation::form_current()
     PetscCall(sort->form_iteration());
     PetscCall(VecAXPY(J, 1, sort->J));
     PetscCall(VecAXPY(M, 1, sort->M));
+    PetscCall(VecAXPY(Mn, 1, sort->Mn));
+    VgradB += sort->VgradB;
   }
 
   PetscCall(DMDAVecRestoreArrayRead(da, E_loc, &E_arr));
@@ -311,6 +320,16 @@ EnergyConservation::EnergyConservation(const Simulation& simulation)
 PetscErrorCode EnergyConservation::diagnose(PetscInt t)
 {
   PetscFunctionBeginUser;
+  if (!initialized) {
+    PetscCall(VecNorm(simulation.E, NORM_2, &w_E));
+    PetscCall(VecNorm(simulation.B, NORM_2, &w_B));
+    PetscCall(VecDot(simulation.M, simulation.B, &a_MB));
+    w_E = 0.5 * POW2(w_E);
+    w_B = 0.5 * POW2(w_B);
+    K = simulation.particles_[0]->kinetic_energy_local();
+    initialized = true;
+  }
+
   w_E0 = w_E;
   w_B0 = w_B;
   a_MB0 = a_MB;
@@ -325,6 +344,7 @@ PetscErrorCode EnergyConservation::add_columns(PetscInt t)
   PetscCall(VecNorm(simulation.E, NORM_2, &w_E));
   PetscCall(VecNorm(simulation.B, NORM_2, &w_B));
   PetscCall(VecNorm(simulation.M, NORM_2, &w_M));
+  PetscCall(VecNorm(simulation.Mn, NORM_2, &w_Mn));
   PetscCall(VecDot(simulation.E_hk, simulation.J, &a_EJ));
   PetscCall(VecDot(simulation.M, simulation.B, &a_MB));
   w_E = 0.5 * POW2(w_E);
@@ -340,6 +360,7 @@ PetscErrorCode EnergyConservation::add_columns(PetscInt t)
   add(13, "dMB", "{: .6e}", (a_MB - a_MB0));
   add(13, "dt * a_EJ", "{: .6e}", (dt * a_EJ));
   add(16, "dE+dB-dMB+dt*dEJ", "{: .6e}", dF - (a_MB - a_MB0) + dt * a_EJ);
+  add(16, "dM/dt-mu*VgradB", "{: .6e}", (w_M - w_Mn)/dt - simulation.VgradB);
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
