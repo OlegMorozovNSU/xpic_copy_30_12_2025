@@ -82,6 +82,16 @@ PetscReal Particles::kinetic_energy_local() const
   return 0.5 * parameters.m * mpw * w;
 }
 
+PetscReal Particles::get_average_iteration_number() const
+{
+  return avgit;
+}
+
+PetscReal Particles::get_average_number_of_traversed_cells() const
+{
+  return avgcell;
+}
+
 
 PetscErrorCode Particles::form_iteration()
 {
@@ -92,6 +102,9 @@ PetscErrorCode Particles::form_iteration()
   PetscCall(DMDAVecGetArrayRead(da, simulation_.dBdx_loc, &simulation_.dBdx_arr));
   PetscCall(DMDAVecGetArrayRead(da, simulation_.dBdy_loc, &simulation_.dBdy_arr));
   PetscCall(DMDAVecGetArrayRead(da, simulation_.dBdz_loc, &simulation_.dBdz_arr));
+
+  avgit = 0.0;
+  avgcell = 0.0;
 
   PetscReal q = parameters.q;
   PetscReal m = parameters.m;
@@ -119,8 +132,9 @@ PetscErrorCode Particles::form_iteration()
   DriftKineticEsirkepov util_temp(nullptr, B_arr, nullptr, Mn_arr);
   util.set_dBidrj_precomputed(simulation_.dBdx_arr, simulation_.dBdy_arr, simulation_.dBdz_arr);
   //PetscCall(util.set_bounds(world.gstart, world.gsize));
+  const PetscReal inv_size = size > 0 ? 1.0 / static_cast<PetscReal>(size) : 0.0;
 
-#pragma omp parallel for reduction(+ : VgradB)
+#pragma omp parallel for reduction(+ : VgradB, avgit, avgcell)
   for (PetscInt g = 0; g < (PetscInt)dk_curr_storage.size(); ++g) {
     const auto& prev_cell = dk_prev_storage[g];
 
@@ -185,12 +199,14 @@ PetscErrorCode Particles::form_iteration()
         //LOG("dt - tau, dtx, dty, dtz = {}, {}, {}, {}", dt - tau, dtx, dty, dtz);
 
         push.process(dtau, curr, prev);
+        avgit += (PetscReal)(push.get_iteration_number() + 1) * inv_size;
         Vph = (curr.r - prev.r) / dtau;
 
         //LOG("Vph.length(), v = {}, {}", Vph.length(), v);
 
         PetscReal path = (curr.r - prev.r).length();
         auto coords = cell_traversal(curr.r, prev.r);
+        avgcell += ((PetscReal)coords.size() - 1.0) * inv_size;
 
         PetscReal a0 = qn_Np(curr);
         PetscReal b0 = curr.mu_p * n_Np(curr);
@@ -316,10 +332,12 @@ PetscErrorCode Particles::sync_dk_curr_storage()
 PetscErrorCode Particles::prepare_storage()
 {
   PetscFunctionBeginUser;
+  size = 0;
   for (PetscInt g = 0; g < world.size.elements_product(); ++g) {
     if (auto& curr = dk_curr_storage[g]; !curr.empty()) {
       auto& prev = dk_prev_storage[g];
       prev = std::vector(curr.begin(), curr.end());
+      size += (PetscInt)curr.size();
     }
   }
   PetscFunctionReturn(PETSC_SUCCESS);

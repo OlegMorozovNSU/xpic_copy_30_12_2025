@@ -19,6 +19,12 @@ public:
   PetscErrorCode after_iteration();
   PetscErrorCode initialize_point_by_field(const Arr B_arr);
   PetscReal kinetic_energy_local() const;
+  PetscReal get_average_iteration_number() const;
+  PetscReal get_average_number_of_traversed_cells() const;
+  const std::vector<std::list<PointByField>>& get_dk_curr_storage() const
+  {
+    return dk_curr_storage;
+  }
 
 
   Vec M;
@@ -39,6 +45,9 @@ protected:
   PetscErrorCode correct_coordinates(PointByField& point);
   std::vector<std::list<PointByField>> dk_curr_storage;
   std::vector<std::vector<PointByField>> dk_prev_storage;
+  PetscInt size = 0;
+  PetscReal avgit = 0.0;
+  PetscReal avgcell = 0.0;
   Simulation& simulation_;
 };
 

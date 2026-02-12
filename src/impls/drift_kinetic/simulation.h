@@ -65,6 +65,7 @@ protected:
   DM da_EB;
   Vec sol;
   SNES snes;
+  PetscInt last_field_itnum = 0;
 
   Mat rotM;
 
@@ -77,6 +78,8 @@ class EnergyConservation : public TableDiagnostic {
 public:
   EnergyConservation(const Simulation& simulation);
   PetscErrorCode diagnose(PetscInt t) override;
+  PetscErrorCode initialize() override;
+  PetscErrorCode finalize() override;
   PetscErrorCode add_columns(PetscInt t) override;
 
   const Simulation& simulation;
@@ -88,6 +91,17 @@ public:
   PetscReal w_M = 0, w_Mn = 0;
   PetscReal K0 = 0, K = 0;
   bool initialized = false;
+
+private:
+  PetscErrorCode init_charge_conservation();
+  PetscErrorCode collect_charge_density(PetscInt sort_id);
+  PetscErrorCode collect_charge_densities();
+
+  DM charge_da = nullptr;
+  Mat divE = nullptr;
+  std::vector<Vec> charge_locals;
+  std::vector<Vec> charge_fields;
+  std::vector<Vec> current_densities;
 };
 
 }  // namespace drift_kinetic
