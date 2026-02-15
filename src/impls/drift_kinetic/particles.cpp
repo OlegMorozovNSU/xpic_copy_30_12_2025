@@ -7,6 +7,73 @@
 #include "src/utils/utils.h"
 
 namespace drift_kinetic {
+namespace {
+
+constexpr PetscReal periodic_split_eps = 1e-12;
+
+struct CutBounds {
+  Vector3R lower;
+  Vector3R upper;
+};
+
+std::vector<std::vector<Vector3R>> split_coords_by_periodic_bounds( //
+  const std::vector<Vector3R>& coords,                              //
+  const CutBounds& cut_bounds,                                       //
+  const DMBoundaryType bounds[3])
+{
+  std::vector<std::vector<Vector3R>> chunks;
+  if (coords.empty())
+    return chunks;
+
+  const Vector3R& cut_lower = cut_bounds.lower;
+  const Vector3R& cut_upper = cut_bounds.upper;
+
+  auto is_periodic = [&](Axis axis) {
+    return bounds[axis] == DM_BOUNDARY_PERIODIC;
+  };
+
+  Vector3R shift{};
+  chunks.push_back({coords.front()});
+
+  for (PetscInt i = 1; i < (PetscInt)coords.size(); ++i) {
+    const auto& raw = coords[i];
+    Vector3R curr = raw + shift;
+    Vector3R delta{};
+    bool crossed = false;
+
+    for (Axis axis : {X, Y, Z}) {
+      if (!is_periodic(axis))
+        continue;
+
+      while (curr[axis] > cut_upper[axis] + periodic_split_eps ||
+             curr[axis] < cut_lower[axis] - periodic_split_eps) {
+        PointByField wrapped(curr, 0.0, 0.0, 0.0);
+        const PetscReal before = wrapped.r[axis];
+        g_bound_periodic(wrapped, axis);
+        const PetscReal after = wrapped.r[axis];
+        if (std::abs(after - before) <= periodic_split_eps)
+          break;
+
+        delta[axis] += after - before;
+        curr[axis] = after;
+        crossed = true;
+      }
+    }
+
+    if (crossed) {
+      const Vector3R prev_shifted = chunks.back().back() + delta;
+      shift += delta;
+      chunks.push_back({prev_shifted, raw + shift});
+      continue;
+    }
+
+    chunks.back().push_back(curr);
+  }
+
+  return chunks;
+}
+
+}  // namespace
 
 Particles::Particles(Simulation& simulation, const SortParameters& parameters)
   : interfaces::Particles(simulation.world, parameters),
@@ -109,21 +176,18 @@ PetscErrorCode Particles::form_iteration()
   PetscReal q = parameters.q;
   PetscReal m = parameters.m;
 
-  PetscReal xb = (world.start[X] - 0.5) * dx;
-  PetscReal yb = (world.start[Y] - 0.5) * dy;
-  PetscReal zb = (world.start[Z] - 0.5) * dz;
-
-  PetscReal xe = (world.end[X] + 0.5) * dx;
-  PetscReal ye = (world.end[Y] + 0.5) * dy;
-  PetscReal ze = (world.end[Z] + 0.5) * dz;
+  const CutBounds cut_bounds{
+    {(world.start[X] - 0.5) * dx, (world.start[Y] - 0.5) * dy, (world.start[Z] - 0.5) * dz},
+    {(world.end[X] + 0.5) * dx, (world.end[Y] + 0.5) * dy, (world.end[Z] + 0.5) * dz},
+  };
 
   static const PetscReal max = std::numeric_limits<double>::max();
 
-  auto process_bound = [&](PetscReal vh, PetscReal x, PetscReal xb, PetscReal xe) {
+  auto process_bound = [&](PetscReal vh, PetscReal x, Axis axis) {
     if (vh > 0)
-      return (xe - x) / vh;
+      return (cut_bounds.upper[axis] - x) / vh;
     else if (vh < 0)
-      return (xb - x) / vh;
+      return (cut_bounds.lower[axis] - x) / vh;
     else
       return max;
   };
@@ -158,9 +222,21 @@ PetscErrorCode Particles::form_iteration()
           Vector3R Es_p, Bs_p, gradBs_p;
 
           Vector3R pos = (rn - r0);
-          PetscReal path = pos.length();
           auto coords = cell_traversal(rn, r0);
-          PetscInt segments = (PetscInt)coords.size() - 1;
+          auto chunked_coords = split_coords_by_periodic_bounds(coords, cut_bounds, world.bounds);
+
+          PetscReal path = 0.0;
+          PetscInt segments = 0;
+          pos = {};
+
+          for (const auto& chunk : chunked_coords) {
+            for (PetscInt s = 1; s < (PetscInt)chunk.size(); ++s) {
+              auto ds = chunk[s] - chunk[s - 1];
+              path += ds.length();
+              pos += ds;
+              ++segments;
+            }
+          }
 
           if (segments <= 0) {
             segments = 1;
@@ -170,31 +246,34 @@ PetscErrorCode Particles::form_iteration()
           pos[Y] = pos[Y] != 0 ? pos[Y] / dy : (PetscReal)segments;
           pos[Z] = pos[Z] != 0 ? pos[Z] / dz : (PetscReal)segments;
 
-          for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
-            auto&& rs0 = coords[s - 1];
-            auto&& rsn = coords[s - 0];
-            call_abort(util.interpolate(Es_p, Bs_p, gradBs_p, rsn, rs0));
+          for (const auto& chunk : chunked_coords) {
+            for (PetscInt s = 1; s < (PetscInt)chunk.size(); ++s) {
+              auto&& rs0 = chunk[s - 1];
+              auto&& rsn = chunk[s - 0];
+              call_abort(util.interpolate(Es_p, Bs_p, gradBs_p, rsn, rs0));
 
-            PetscReal beta = path > 0 ? (rsn - rs0).length() / path : 1.0;
-            E_p += Es_p * beta;
-            B_p += Bs_p * beta;
-            gradB_p += gradBs_p.elementwise_division(pos);
+              PetscReal beta = path > 0 ? (rsn - rs0).length() / path : 1.0;
+              E_p += Es_p * beta;
+              B_p += Bs_p * beta;
+              gradB_p += gradBs_p.elementwise_division(pos);
+            }
           }
         });
       
-      PetscReal v = std::sqrt((POW2(curr.p_parallel) + POW2(curr.p_perp)));
-      Vector3R Vph(v, v, v);
+      //PetscReal v = std::sqrt((POW2(curr.p_parallel) + POW2(curr.p_perp)));
+      Vector3R Vph;
+      PetscReal dtau = dt;
 #if 0
       LOG("v_th = {}", v);
       LOG("v_drift = ({}, {}, {})", Vph.x(), Vph.y(), Vph.z());
 #endif
 
-      for (PetscReal dtau = 0.0, tau = 0.0; tau < dt; tau += dtau) {
-        PetscReal dtx = process_bound(Vph.x(), curr.x(), xb, xe);
-        PetscReal dty = process_bound(Vph.y(), curr.y(), yb, ye);
-        PetscReal dtz = process_bound(Vph.z(), curr.z(), zb, ze);
-
-        dtau = std::min({dt - tau, dtx, dty, dtz});
+      //for (PetscReal dtau = 0.0, tau = 0.0; tau < dt; tau += dtau) {
+      //  PetscReal dtx = process_bound(Vph.x(), curr.x(), X);
+      //  PetscReal dty = process_bound(Vph.y(), curr.y(), Y);
+      //  PetscReal dtz = process_bound(Vph.z(), curr.z(), Z);
+//
+      //  dtau = std::min({dt - tau, dtx, dty, dtz});
 
         //LOG("dt - tau, dtx, dty, dtz = {}, {}, {}, {}", dt - tau, dtx, dty, dtz);
 
@@ -204,27 +283,36 @@ PetscErrorCode Particles::form_iteration()
 
         //LOG("Vph.length(), v = {}, {}", Vph.length(), v);
 
-        PetscReal path = (curr.r - prev.r).length();
         auto coords = cell_traversal(curr.r, prev.r);
-        avgcell += ((PetscReal)coords.size() - 1.0) * inv_size;
+        auto chunked_coords = split_coords_by_periodic_bounds(coords, cut_bounds, world.bounds);
+
+        PetscReal path = 0.0;
+        PetscInt segments = 0;
+        for (const auto& chunk : chunked_coords) {
+          segments += std::max<PetscInt>(0, (PetscInt)chunk.size() - 1);
+          for (PetscInt s = 1; s < (PetscInt)chunk.size(); ++s)
+            path += (chunk[s] - chunk[s - 1]).length();
+        }
+        avgcell += (PetscReal)segments * inv_size;
 
         PetscReal a0 = qn_Np(curr);
         PetscReal b0 = curr.mu_p * n_Np(curr);
 
-        for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
-          auto&& rs0 = coords[s - 1];
-          auto&& rsn = coords[s - 0];
-          PetscReal a = a0 * (rsn - rs0).length() / path;
-          call_abort(util.decomposition_J(rsn, rs0, Vph, a));
+        for (const auto& chunk : chunked_coords) {
+          for (PetscInt s = 1; s < (PetscInt)chunk.size(); ++s) {
+            auto&& rs0 = chunk[s - 1];
+            auto&& rsn = chunk[s - 0];
+            PetscReal a = a0 * (rsn - rs0).length() / path;
+            call_abort(util.decomposition_J(rsn, rs0, Vph, a));
 
-          PetscReal b = b0 * (rsn - rs0).length() / path;
-          call_abort(util.decomposition_M(rsn, b));
-          call_abort(util_temp.decomposition_M(rs0, b));
+            PetscReal b = b0 * (rsn - rs0).length() / path;
+            call_abort(util.decomposition_M(rsn, b));
+            call_abort(util_temp.decomposition_M(rs0, b));
+          }
         }
-        correct_coordinates(curr);
-        prev = curr;
-      }
-      VgradB += push.get_VgradB(curr);
+        //correct_coordinates(curr);
+        //prev = curr;
+        VgradB += push.get_VgradB(curr);
       ++i;
     }
   }
@@ -246,6 +334,10 @@ PetscErrorCode Particles::after_iteration() {
 
   PetscReal q = parameters.q;
   PetscReal m = parameters.m;
+  const CutBounds cut_bounds{
+    {(world.start[X] - 0.5) * dx, (world.start[Y] - 0.5) * dy, (world.start[Z] - 0.5) * dz},
+    {(world.end[X] + 0.5) * dx, (world.end[Y] + 0.5) * dy, (world.end[Z] + 0.5) * dz},
+  };
 
   DriftKineticEsirkepov util(nullptr, B_arr, nullptr, nullptr);
 
@@ -267,25 +359,32 @@ PetscErrorCode Particles::after_iteration() {
           gradB_p = {};
           Vector3R Bs_p;
 
-          Vector3R pos = (rn - r0);
-          PetscReal path = pos.length();
           auto coords = cell_traversal(rn, r0);
+          auto chunked_coords = split_coords_by_periodic_bounds(coords, cut_bounds, world.bounds);
 
-          for (PetscInt s = 1; s < (PetscInt)coords.size(); ++s) {
-            auto&& rs0 = coords[s - 1];
-            auto&& rsn = coords[s - 0];
-            util.interpolate_B(Bs_p, rsn);
+          PetscReal path = 0.0;
+          for (const auto& chunk : chunked_coords) {
+            for (PetscInt s = 1; s < (PetscInt)chunk.size(); ++s)
+              path += (chunk[s] - chunk[s - 1]).length();
+          }
 
-            PetscReal beta = path > 0 ? (rsn - rs0).length() / path : 1.0;
-            B_p += Bs_p * beta;
+          for (const auto& chunk : chunked_coords) {
+            for (PetscInt s = 1; s < (PetscInt)chunk.size(); ++s) {
+              auto&& rs0 = chunk[s - 1];
+              auto&& rsn = chunk[s - 0];
+              util.interpolate_B(Bs_p, rsn);
+
+              PetscReal beta = path > 0 ? (rsn - rs0).length() / path : 1.0;
+              B_p += Bs_p * beta;
+            }
           }
         });
 
-    push.update_v_perp(curr, prev);
-    i++;
+      push.update_v_perp(curr, prev);
+      i++;
+    }
   }
-}
-PetscFunctionReturn(PETSC_SUCCESS);
+  PetscFunctionReturn(PETSC_SUCCESS);
 }
 
 PetscReal Particles::n_Np(const PointByField& point) const
