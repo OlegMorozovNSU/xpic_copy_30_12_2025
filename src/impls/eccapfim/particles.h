@@ -20,6 +20,7 @@ public:
 
   PetscReal get_average_iteration_number() const;
   PetscReal get_average_number_of_traversed_cells() const;
+  PetscInt get_maximum_number_of_traversed_cells() const;
 
 protected:
   static constexpr const auto& shape_func = spline_of_2nd_order;
@@ -32,6 +33,7 @@ protected:
   PetscInt size = 0;
   PetscReal avgit = 0;
   PetscReal avgcell = 0;
+  PetscInt  maxcell = 0;
 
   Simulation& simulation_;
 };

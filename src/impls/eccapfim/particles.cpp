@@ -26,14 +26,20 @@ PetscReal Particles::get_average_number_of_traversed_cells() const
   return avgcell;
 }
 
+PetscInt Particles::get_maximum_number_of_traversed_cells() const
+{
+  return maxcell;
+}
+
 
 PetscErrorCode Particles::form_iteration()
 {
   PetscFunctionBeginUser;
   PetscCall(DMDAVecGetArrayWrite(da, J_loc, &J_arr));
 
-  avgit = 0.0;
-  avgcell = 0.0;
+  avgit = 0;
+  avgcell = 0;
+  maxcell = 0;
 
   PetscReal q = parameters.q;
   PetscReal m = parameters.m;
@@ -70,7 +76,7 @@ PetscErrorCode Particles::form_iteration()
     return false;
   };
 
-#pragma omp parallel for reduction(+ : avgit, avgcell)
+#pragma omp parallel for reduction(+ : avgit, avgcell, maxcell)
   for (PetscInt g = 0; g < (PetscInt)storage.size(); ++g) {
     ImplicitEsirkepov util(E_arr, B_arr, J_arr);
 
@@ -149,6 +155,7 @@ PetscErrorCode Particles::form_iteration()
 
         avgit += (PetscReal)it / size;
         avgcell += (PetscReal)(coords.size() - 1) / size;
+        maxcell = std::max(maxcell, (PetscInt)(coords.size() - 1));
 
         d = (pn.r - p0.r).length();
         coords = cell_traversal(pn.r, p0.r);

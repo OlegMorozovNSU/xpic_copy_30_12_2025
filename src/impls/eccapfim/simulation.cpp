@@ -89,9 +89,10 @@ PetscErrorCode Simulation::calc_iteration()
   }
 
   for (const auto& sort : particles_) {
-    LOG("  Averaged particle iterations information for \"{}\":", sort->parameters.sort_name);
-    LOG("    Number of Crank-Nicolson iterations is {:3.4f}", sort->get_average_iteration_number());
-    LOG("    Number of traversed cells is {:3.4f}", sort->get_average_number_of_traversed_cells());
+    LOG("  Particle iterations information for \"{}\":", sort->parameters.sort_name);
+    LOG("    Averaged number of Crank-Nicolson iterations is {:3.4f}", sort->get_average_iteration_number());
+    LOG("    Averaged number of traversed cells is {:3.4f}", sort->get_average_number_of_traversed_cells());
+    LOG("    Maximum number of traversed cells is {:3d}", sort->get_maximum_number_of_traversed_cells());
   }
 
   PetscCall(PetscLogStagePop());
