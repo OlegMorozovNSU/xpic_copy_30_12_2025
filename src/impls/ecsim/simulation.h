@@ -56,13 +56,13 @@ protected:
   // The main simulation steps
   PetscErrorCode clear_sources();
   PetscErrorCode first_push();
-  PetscErrorCode fill_ecsim_current();
   PetscErrorCode advance_fields();
   PetscErrorCode second_push();
   PetscErrorCode final_update();
 
-  PetscErrorCode update_cells_with_assembly();
   PetscErrorCode advance_fields(KSP ksp, Vec curr, Vec out);
+  PetscErrorCode update_cells_with_assembly();
+  PetscErrorCode fill_ecsim_current();
 
   PetscErrorCode fill_matrix_indices(PetscInt* coo_i, PetscInt* coo_j);
   PetscErrorCode fill_ecsim_current(PetscReal* coo_v);
@@ -94,7 +94,7 @@ protected:
   std::vector<PetscReal> conv_hist;
 
   PetscClassId classid;
-  PetscLogEvent events[1];
+  PetscLogEvent events[2];
   PetscLogStage stagenums[6];
 
   SyncClock clock;

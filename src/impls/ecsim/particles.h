@@ -31,6 +31,10 @@ protected:
   void decompose_ecsim_current(const Point& point, PetscReal* coo_v);
 
   Simulation& simulation_;
+
+private:
+  PetscClassId classid;
+  PetscLogEvent events[2];
 };
 
 }  // namespace ecsim

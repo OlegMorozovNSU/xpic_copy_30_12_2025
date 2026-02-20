@@ -16,17 +16,25 @@ Particles::Particles(Simulation& simulation, const SortParameters& parameters)
 
   J = currI;
   J_loc = currI_loc;
+
+  PetscCallAbort(PETSC_COMM_WORLD, PetscClassIdRegister("ecsim::Particles", &classid));
+  PetscCallAbort(PETSC_COMM_WORLD, PetscLogEventRegister("first_push", classid, &events[0]));
+  PetscCallAbort(PETSC_COMM_WORLD, PetscLogEventRegister("second_push", classid, &events[1]));
 }
 
 PetscErrorCode Particles::first_push()
 {
   PetscFunctionBeginUser;
+  PetscLogEventBegin(events[0], 0, 0, 0, 0);
+
 #pragma omp parallel for schedule(monotonic : dynamic, OMP_CHUNK_SIZE)
   for (auto& cell : storage) {
     for (auto& point : cell) {
       BorisPush::update_r(dt, point);
     }
   }
+
+  PetscLogEventEnd(events[0], 0, 0, 0, 0);
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -175,6 +183,8 @@ void Particles::decompose_ecsim_current(const Point& point, PetscReal* coo_v)
 PetscErrorCode Particles::second_push()
 {
   PetscFunctionBeginUser;
+  PetscLogEventBegin(events[2], 0, 0, 0, 0);
+
   PetscReal q = parameters.q;
   PetscReal m = parameters.m;
 
@@ -188,6 +198,8 @@ PetscErrorCode Particles::second_push()
       push.update_vEB(dt, point);
     }
   }
+
+  PetscLogEventBegin(events[2], 0, 0, 0, 0);
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

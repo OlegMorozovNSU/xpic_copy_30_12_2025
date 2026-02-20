@@ -290,6 +290,8 @@ PetscErrorCode Simulation::advance_fields(KSP ksp, Vec curr, Vec out)
 PetscErrorCode Simulation::update_cells_with_assembly()
 {
   PetscFunctionBeginUser;
+  PetscLogEventBegin(events[0], 0, 0, 0, 0);
+
   for (auto& sort : particles_)
     sort->update_cells();
 
@@ -338,6 +340,8 @@ PetscErrorCode Simulation::update_cells_with_assembly()
       }
     }
   }
+
+  PetscLogEventEnd(events[0], 0, 0, 0, 0);
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -482,10 +486,14 @@ PetscErrorCode Simulation::fill_ecsim_current(PetscReal* coo_v)
   PetscCall(DMGlobalToLocal(da, B, INSERT_VALUES, B_loc));
   PetscCall(DMDAVecGetArrayRead(da, B_loc, &B_arr));
 
+  PetscLogEventBegin(events[1], B_loc, 0, 0, 0);
+
   for (auto& sort : particles_) {
     sort->B_arr = B_arr;
     PetscCall(sort->fill_ecsim_current(coo_v));
   }
+
+  PetscLogEventEnd(events[1], B_loc, 0, 0, 0);
 
   PetscCall(DMDAVecRestoreArrayRead(da, B_loc, &B_arr));
   PetscFunctionReturn(PETSC_SUCCESS);
@@ -503,8 +511,9 @@ void Simulation::get_array_offset(PetscInt begin_g, PetscInt end_g, PetscInt& of
 PetscErrorCode Simulation::init_log_stages()
 {
   PetscFunctionBeginUser;
-  PetscCall(PetscClassIdRegister("ecsimcorr::Simulation", &classid));
-  PetscCall(PetscLogEventRegister("fill_ecsim_curr", classid, &events[0]));
+  PetscCall(PetscClassIdRegister("ecsim::Simulation", &classid));
+  PetscCall(PetscLogEventRegister("update_cells_with_assembly", classid, &events[0]));
+  PetscCall(PetscLogEventRegister("fill_ecsim_current", classid, &events[1]));
 
   PetscCall(PetscLogStageRegister("Initialization", &stagenums[0]));
   PetscCall(PetscLogStageRegister("Clear sources", &stagenums[1]));
