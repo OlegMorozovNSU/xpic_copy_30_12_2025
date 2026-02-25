@@ -171,7 +171,6 @@ Energy::Energy(const ecsimcorr::Simulation& simulation)
 PetscErrorCode Energy::fill_energy_cons(PetscInt t)
 {
   PetscFunctionBeginUser;
-  PetscCall(VecAXPY(simulation.B, -1.0, simulation.B0));
   PetscCall(::Energy::fill_energy_cons(t));
 
   PetscInt off = 3;
@@ -194,7 +193,6 @@ PetscErrorCode Energy::fill_energy_cons(PetscInt t)
   }
 
   energy_cons.add(13, "WD", "{: .6e}", dK - dt * corr_w);
-  PetscCall(VecAXPY(simulation.B, +1.0, simulation.B0));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

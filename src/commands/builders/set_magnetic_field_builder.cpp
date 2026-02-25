@@ -16,13 +16,8 @@ PetscErrorCode SetMagneticFieldBuilder::build(const Configuration::json_t& info)
     "SetCoilsField",
   };
 
-  std::string field;
-  info.at("field").get_to(field);
-  Vec B0 = simulation_.get_named_vector(field);
-
-  Vec B = nullptr;
-  if (auto it = info.find("field_axpy"); it != info.end())
-    B = simulation_.get_named_vector(it->get<std::string>());
+  Vec B = simulation_.B;
+  Vec B0 = simulation_.B0;
 
   const Configuration::json_t& setter = info.at("setter");
 
@@ -58,6 +53,6 @@ PetscErrorCode SetMagneticFieldBuilder::build(const Configuration::json_t& info)
   commands_.emplace_back(
     std::make_unique<SetMagneticField>(B0, B, std::move(setup)));
 
-  LOG("  SetMagneticField command is added for {}", field);
+  LOG("  SetMagneticField command is added");
   PetscFunctionReturn(PETSC_SUCCESS);
 }

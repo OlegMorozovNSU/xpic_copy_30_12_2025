@@ -43,6 +43,8 @@ PetscErrorCode Energy::diagnose(PetscInt t)
 PetscErrorCode Energy::calculate_field()
 {
   PetscFunctionBeginUser;
+  PetscCall(VecAXPY(simulation.B, -1, simulation.B0));
+
   PetscCall(VecNorm(simulation.E, NORM_2, &E));
   PetscCall(VecNorm(simulation.B, NORM_2, &B));
   E = 0.5 * POW2(E);
@@ -55,6 +57,8 @@ PetscErrorCode Energy::calculate_field()
   PetscReal g3 = (geom_nx * geom_ny * geom_nz);
   std_E = sqrt((E - 0.5 * mean_E.squared() / g3) / g3);
   std_B = sqrt((B - 0.5 * mean_B.squared() / g3) / g3);
+
+  PetscCall(VecAXPY(simulation.B, +1, simulation.B0));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
