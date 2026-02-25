@@ -13,7 +13,7 @@ void get_analytical_fields(
   const Vector3R& r, Vector3R& E_p, Vector3R& B_p, Vector3R& gradB_p)
 {
   E_p = E0;
-  B_p = B0; /// @todo Should be `B0 + 0.5 * r.length() * r;`
+  B_p = B0;
   gradB_p = r;
 }
 

@@ -243,7 +243,6 @@ PetscErrorCode Simulation::form_function(Vec vf)
 
 
 #if SNES_ITERATE_B
-/// @todo Replace with `DMCreateSubDM()`, `VecGetSubVector()` to obtain E^{n+1/2}, B^{n+1/2}
 PetscErrorCode Simulation::from_snes(Vec v, Vec vE, Vec vB)
 {
   PetscFunctionBeginUser;
