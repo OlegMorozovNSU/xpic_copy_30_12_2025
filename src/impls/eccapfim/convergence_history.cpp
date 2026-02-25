@@ -13,6 +13,18 @@ PetscErrorCode ConvergenceHistory::add_columns(PetscInt t)
   PetscFunctionBeginUser;
   add(6, "Time", "{:d}", t);
 
+  SNES snes = simulation.snes;
+
+  PetscInt nit, lit, len;
+  PetscReal* hist;
+
+  PetscCall(SNESGetIterationNumber(snes, &nit));
+  PetscCall(SNESGetLinearSolveIterations(snes, &lit));
+  PetscCall(SNESGetConvergenceHistory(snes, &hist, nullptr, &len));
+
+  add(6, "NItNum", "{:d}", nit);
+  add(6, "LItNum", "{:d}", lit);
+
   for (const auto& sort : simulation.particles_) {
     const auto& name = sort->parameters.sort_name;
     auto cn = sort->get_average_iteration_number();
@@ -23,17 +35,7 @@ PetscErrorCode ConvergenceHistory::add_columns(PetscInt t)
     add(8, "MaxTC_" + name, "{:3d}", mtc);
   }
 
-  SNES snes = simulation.snes;
-
-  PetscInt it, fev, len;
-  PetscReal* hist;
-
-  PetscCall(SNESGetIterationNumber(snes, &it));
-  PetscCall(SNESGetNumberFunctionEvals(snes, &fev));
-  PetscCall(SNESGetConvergenceHistory(snes, &hist, nullptr, &len));
-
-  add(6, "FEvals", "{:d}", fev);
-  add(6, "ItNum", "{:d}", it);
+  add_separator();
 
   if (len == 0) {
     add(12, "ConvHist", "{}", "");

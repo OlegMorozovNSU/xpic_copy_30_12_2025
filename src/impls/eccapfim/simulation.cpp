@@ -80,8 +80,13 @@ PetscErrorCode Simulation::calc_iteration()
   LOG("  SNESSolve() has finished for \"{}\", SNESConvergedReasonView():", name);
   PetscCall(SNESConvergedReasonView(snes, PETSC_VIEWER_STDOUT_WORLD));
 
-  PetscInt len;
+  PetscInt nit, lit, len;
+  PetscCall(SNESGetIterationNumber(snes, &nit));
+  PetscCall(SNESGetLinearSolveIterations(snes, &lit));
   PetscCall(SNESGetConvergenceHistory(snes, NULL, NULL, &len));
+
+  LOG("  Total nonlinear iterations: {}", nit);
+  LOG("  Average linear iterations: {}", lit / (PetscReal)nit);
   LOG("  Convergence history for this solution:");
 
   for (PetscInt i = 0; i < len; ++i) {

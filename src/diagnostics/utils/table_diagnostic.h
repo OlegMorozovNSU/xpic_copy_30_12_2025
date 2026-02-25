@@ -35,6 +35,11 @@ public:
     }
   }
 
+  void add_separator()
+  {
+    add(4, " |", "{}", "|");
+  }
+
 protected:
   PetscErrorCode write_formatted(const std::vector<std::string>& container);
 
