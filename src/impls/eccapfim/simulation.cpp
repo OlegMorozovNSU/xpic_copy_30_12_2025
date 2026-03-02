@@ -319,14 +319,7 @@ PetscErrorCode Simulation::to_snes(Vec vE, Vec vB, Vec v)
 PetscErrorCode Simulation::init_vectors()
 {
   PetscFunctionBeginUser;
-  PetscCall(DMCreateGlobalVector(da, &E));
-  PetscCall(DMCreateGlobalVector(da, &B));
-  PetscCall(DMCreateGlobalVector(da, &J));
-
-  PetscCall(DMCreateGlobalVector(da, &B0));
   PetscCall(DMCreateGlobalVector(da, &E_hk));
-  PetscCall(DMCreateLocalVector(da, &E_loc));
-  PetscCall(DMCreateLocalVector(da, &B_loc));
 
 #if SNES_ITERATE_B
   PetscCall(DMCreateGlobalVector(da, &B_hk));
@@ -337,20 +330,7 @@ PetscErrorCode Simulation::init_vectors()
 PetscErrorCode Simulation::init_matrices()
 {
   PetscFunctionBeginUser;
-  PetscCall(DMSetMatrixPreallocateOnly(da, PETSC_FALSE));
-  PetscCall(DMSetMatrixPreallocateSkip(da, PETSC_TRUE));
-
-  Rotor rotor(da);
-  PetscCall(rotor.create_positive(&rotE));
-  PetscCall(rotor.create_negative(&rotB));
-
 #if !SNES_ITERATE_B
-  PetscCall(MatProductCreate(rotB, rotE, nullptr, &matM));
-  PetscCall(MatProductSetType(matM, MATPRODUCT_AB));
-  PetscCall(MatProductSetFromOptions(matM));
-  PetscCall(MatProductSymbolic(matM));
-  PetscCall(MatProductNumeric(matM));
-
   PetscCall(MatScale(matM, +0.25 * dt * dt));
   PetscCall(MatScale(rotB, -0.5 * dt));
   PetscCall(MatScale(rotE, -dt));
@@ -421,16 +401,7 @@ PetscErrorCode Simulation::finalize()
   PetscCall(SNESDestroy(&snes));
   PetscCall(VecDestroy(&sol));
 
-  PetscCall(MatDestroy(&rotE));
-  PetscCall(MatDestroy(&rotB));
-
-  PetscCall(VecDestroy(&E));
-  PetscCall(VecDestroy(&B));
-  PetscCall(VecDestroy(&J));
-  PetscCall(VecDestroy(&B0));
   PetscCall(VecDestroy(&E_hk));
-  PetscCall(VecDestroy(&E_loc));
-  PetscCall(VecDestroy(&B_loc));
 
 #if SNES_ITERATE_B
   PetscCall(DMDestroy(&da_EB));

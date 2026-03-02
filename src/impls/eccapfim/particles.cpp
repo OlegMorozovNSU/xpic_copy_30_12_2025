@@ -12,8 +12,6 @@ Particles::Particles(Simulation& simulation, const SortParameters& parameters)
     previous_storage(world.size.elements_product()),
     simulation_(simulation)
 {
-  PetscCallAbort(PETSC_COMM_WORLD, DMCreateGlobalVector(da, &J));
-  PetscCallAbort(PETSC_COMM_WORLD, DMCreateLocalVector(da, &J_loc));
 }
 
 PetscReal Particles::get_average_iteration_number() const
@@ -210,14 +208,6 @@ PetscErrorCode Particles::prepare_storage()
 
     size += (PetscInt)curr.size();
   }
-  PetscFunctionReturn(PETSC_SUCCESS);
-}
-
-PetscErrorCode Particles::finalize()
-{
-  PetscFunctionBeginUser;
-  PetscCall(VecDestroy(&J));
-  PetscCall(VecDestroy(&J_loc));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

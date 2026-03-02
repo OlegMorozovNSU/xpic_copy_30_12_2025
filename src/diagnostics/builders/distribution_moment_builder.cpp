@@ -33,7 +33,7 @@ PetscErrorCode DistributionMomentBuilder::build(const Configuration::json_t& inf
     throw std::runtime_error(
       "Unknown moment name " + moment + " for particles " + particles);
 
-  FieldView::Region region;
+  Region region;
   region.dim = it->second > 1 ? 4 : 3;
   region.dof = it->second;
 

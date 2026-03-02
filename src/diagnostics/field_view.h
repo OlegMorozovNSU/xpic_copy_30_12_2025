@@ -7,18 +7,11 @@
 #include "src/pch.h"
 #include "src/interfaces/diagnostic.h"
 #include "src/utils/mpi_binary_file.h"
-#include "src/utils/vector4.h"
+#include "src/utils/world.h"
 
 
 class FieldView : public interfaces::Diagnostic {
 public:
-  struct Region {
-    PetscInt dim;
-    PetscInt dof;
-    Vector4I start;
-    Vector4I size;
-  };
-
   /**
    * @brief Constructs `Field_view` diagnostic of a particular `field`.
    * @note Result _can_ be `nullptr`, if `region` doesn't touch
@@ -31,9 +24,6 @@ public:
   PetscErrorCode diagnose(PetscInt t) override;
 
 protected:
-  static PetscErrorCode get_local_communicator(
-    DM da, const Region& region, MPI_Comm* newcomm);
-
   FieldView(DM da, Vec field);
   FieldView(const std::string& out_dir, DM da, Vec field, MPI_Comm newcomm);
 

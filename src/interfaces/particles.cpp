@@ -1,38 +1,16 @@
 #include "particles.h"
 
 #include "src/utils/geometries.h"
+#include "src/utils/shape.h"
 
 namespace interfaces {
 
-namespace {
-
-constexpr PetscInt dim = 3;
-
-constexpr PetscInt neighbor_index(PetscInt x, PetscInt y, PetscInt z)
-{
-  return indexing::petsc_index(x, y, z, 0, dim, dim, dim, 1);
-}
-
-constexpr PetscInt get_index(const Vector3I& r, Axis axis, const World& world)
-{
-  if (r[axis] < world.start[axis])
-    return 0;
-  if (r[axis] < world.end[axis])
-    return 1;
-  return 2;
-}
-
-/// @note `PETSC_DEFAULT` isn't identical to `MPI_PROC_NULL`
-constexpr PetscMPIInt get_neighbor(PetscInt i, const World& world)
-{
-  return world.neighbors[i] < 0 ? MPI_PROC_NULL : world.neighbors[i];
-}
-
-}  // namespace
-
-
 Particles::Particles(const World& world, const SortParameters& parameters)
-  : world(world), da(world.da), parameters(parameters), storage(world.size.elements_product())
+  : world(world),
+    da(world.da),
+    da_rho(world.da_rho),
+    parameters(parameters),
+    storage(world.size.elements_product())
 {
   PetscMPIInt size;
   PetscCallAbort(PETSC_COMM_WORLD, MPI_Comm_size(PETSC_COMM_WORLD, &size));
@@ -42,6 +20,14 @@ Particles::Particles(const World& world, const SortParameters& parameters)
 
   PetscCallAbort(PETSC_COMM_WORLD, PetscClassIdRegister("interfaces::Particles", &classid));
   PetscCallAbort(PETSC_COMM_WORLD, PetscLogEventRegister("update_cells", classid, &events[0]));
+
+  PetscCallAbort(PETSC_COMM_WORLD, DMCreateGlobalVector(da, &J));
+  PetscCallAbort(PETSC_COMM_WORLD, DMCreateGlobalVector(da_rho, &rho[0]));
+  PetscCallAbort(PETSC_COMM_WORLD, DMCreateGlobalVector(da_rho, &rho[1]));
+
+  PetscCallAbort(PETSC_COMM_WORLD, DMCreateLocalVector(da, &J_loc));
+  PetscCallAbort(PETSC_COMM_WORLD, DMCreateLocalVector(da_rho, &rho_loc[0]));
+  PetscCallAbort(PETSC_COMM_WORLD, DMCreateLocalVector(da_rho, &rho_loc[1]));
 }
 
 PetscErrorCode Particles::add_particle(const Point& point, bool* is_added)
@@ -117,6 +103,25 @@ PetscErrorCode Particles::update_cells_seq()
 
 PetscErrorCode Particles::update_cells_mpi()
 {
+  constexpr PetscInt dim = 3;
+
+  auto neighbor_index = [&](PetscInt x, PetscInt y, PetscInt z) {
+    return indexing::petsc_index(x, y, z, 0, dim, dim, dim, 1);
+  };
+
+  auto get_index = [&](const Vector3I& r, Axis axis) {
+    if (r[axis] < world.start[axis])
+      return 0;
+    if (r[axis] < world.end[axis])
+      return 1;
+    return 2;
+  };
+
+  /// @note `PETSC_DEFAULT` isn't identical to `MPI_PROC_NULL`
+  auto get_neighbor = [&](PetscInt i) {
+    return world.neighbors[i] < 0 ? MPI_PROC_NULL : world.neighbors[i];
+  };
+
   PetscFunctionBeginUser;
   constexpr PetscInt neighbors_num = POW3(3);
   constexpr PetscInt center_index = neighbor_index(1, 1, 1);
@@ -148,16 +153,16 @@ PetscErrorCode Particles::update_cells_mpi()
         continue;
       }
 
-      PetscInt i = neighbor_index( //
-        get_index(ng, X, world),   //
-        get_index(ng, Y, world),   //
-        get_index(ng, Z, world));
+      PetscInt i = neighbor_index(  //
+        get_index(ng, X),  //
+        get_index(ng, Y),  //
+        get_index(ng, Z));
 
       // Particle didn't cross boundaries, local update cell is needed
       if (i == center_index) {
-        PetscInt j = world.s_g(   //
-          ng[X] - world.start[X], //
-          ng[Y] - world.start[Y], //
+        PetscInt j = world.s_g(  //
+          ng[X] - world.start[X],  //
+          ng[Y] - world.start[Y],  //
           ng[Z] - world.start[Z]);
 
         storage[j].emplace_back(std::move(*it));
@@ -190,8 +195,8 @@ PetscErrorCode Particles::update_cells_mpi()
       continue;
 
     PetscInt r = (neighbors_num - 1) - s;
-    PetscCallMPI(MPI_Isend(&o_num[s], 1, MPIU_SIZE_T, get_neighbor(s, world), MPI_TAG_NUMBERS, comm, &reqs[req++]));
-    PetscCallMPI(MPI_Irecv(&i_num[r], 1, MPIU_SIZE_T, get_neighbor(r, world), MPI_TAG_NUMBERS, comm, &reqs[req++]));
+    PetscCallMPI(MPI_Isend(&o_num[s], 1, MPIU_SIZE_T, get_neighbor(s), MPI_TAG_NUMBERS, comm, &reqs[req++]));
+    PetscCallMPI(MPI_Irecv(&i_num[r], 1, MPIU_SIZE_T, get_neighbor(r), MPI_TAG_NUMBERS, comm, &reqs[req++]));
   }
   PetscCallMPI(MPI_Waitall(req, reqs, MPI_STATUSES_IGNORE));
 
@@ -202,8 +207,8 @@ PetscErrorCode Particles::update_cells_mpi()
 
     PetscInt r = (neighbors_num - 1) - s;
     incoming[r].resize(i_num[r]);
-    PetscCallMPI(MPI_Isend(outgoing[s].data(), o_num[s] * sizeof(Point), MPI_BYTE, get_neighbor(s, world), MPI_TAG_POINTS, comm, &reqs[req++]));
-    PetscCallMPI(MPI_Irecv(incoming[r].data(), i_num[r] * sizeof(Point), MPI_BYTE, get_neighbor(r, world), MPI_TAG_POINTS, comm, &reqs[req++]));
+    PetscCallMPI(MPI_Isend(outgoing[s].data(), o_num[s] * sizeof(Point), MPI_BYTE, get_neighbor(s), MPI_TAG_POINTS, comm, &reqs[req++]));
+    PetscCallMPI(MPI_Irecv(incoming[r].data(), i_num[r] * sizeof(Point), MPI_BYTE, get_neighbor(r), MPI_TAG_POINTS, comm, &reqs[req++]));
   }
   PetscCallMPI(MPI_Waitall(req, reqs, MPI_STATUSES_IGNORE));
 
@@ -341,6 +346,96 @@ PetscErrorCode Particles::correct_coordinates(Point& point)
 PetscErrorCode Particles::finalize()
 {
   PetscFunctionBeginUser;
+  PetscCall(VecDestroy(&J));
+  PetscCall(VecDestroy(&rho[0]));
+  PetscCall(VecDestroy(&rho[1]));
+
+  PetscCall(VecDestroy(&J_loc));
+  PetscCall(VecDestroy(&rho_loc[0]));
+  PetscCall(VecDestroy(&rho_loc[1]));
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+
+struct DefaultRhoShape {
+  DefaultRhoShape() = default;
+
+  static constexpr PetscReal shr = shape_radius;
+  static constexpr PetscInt shw = (PetscInt)(2 * shr);
+  static constexpr PetscInt shm = POW3(shw);
+  static constexpr PetscReal (&sfunc)(PetscReal) = shape_function;
+
+  Vector3I start;
+  PetscReal cache[shm];
+
+  void setup(const Vector3R& r)
+  {
+    Vector3R p_r = ::Shape::make_r(r);
+
+    start = Vector3I{
+      (PetscInt)(ceil(p_r[X] - shr)),
+      (PetscInt)(ceil(p_r[Y] - shr)),
+      (PetscInt)(ceil(p_r[Z] - shr)),
+    };
+
+#pragma omp simd
+    for (PetscInt i = 0; i < shm; ++i) {
+      auto x = (PetscReal)(start[X] + i % shw);
+      auto y = (PetscReal)(start[Y] + (i / shw) % shw);
+      auto z = (PetscReal)(start[Z] + (i / shw) / shw);
+      cache[i] = sfunc(p_r[X] - x) * sfunc(p_r[Y] - y) * sfunc(p_r[Z] - z);
+    }
+  }
+};
+
+PetscErrorCode Particles::initialize_rho()
+{
+  PetscFunctionBeginUser;
+  PetscCall(calculate_rho());
+  PetscCall(VecCopy(rho[1], rho[0]));
+  PetscCall(VecCopy(rho_loc[1], rho_loc[0]));
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+PetscErrorCode Particles::calculate_rho()
+{
+  PetscFunctionBeginUser;
+  auto r = rho[1];
+  auto r_loc = rho_loc[1];
+  auto r_arr = rho_arr[1];
+
+  PetscCall(VecSwap(rho[0], r));
+  PetscCall(VecSwap(rho_loc[0], r_loc));
+
+  PetscCall(VecSet(r, 0));
+  PetscCall(VecSet(r_loc, 0));
+
+  PetscCall(DMDAVecGetArrayWrite(da_rho, r_loc, &r_arr));
+
+  DefaultRhoShape shape;
+  const PetscReal q = parameters.q;
+  const PetscReal mpw = parameters.n / (PetscReal)parameters.Np;
+
+#pragma omp parallel for private(shape)
+  for (auto&& cell : storage) {
+    for (auto&& point : cell) {
+      shape.setup(point.r);
+
+      PetscInt i, x, y, z;
+
+      for (i = 0; i < shape.shm; ++i) {
+        x = shape.start[X] + i % shape.shw;
+        y = shape.start[Y] + (i / shape.shw) % shape.shw;
+        z = shape.start[Z] + (i / shape.shw) / shape.shw;
+
+#pragma omp atomic update
+        r_arr[z][y][x] += (q * mpw) * shape.cache[i];
+      }
+    }
+  }
+
+  PetscCall(DMDAVecRestoreArrayWrite(da_rho, r_loc, &r_arr));
+  PetscCall(DMLocalToGlobal(da_rho, r_loc, ADD_VALUES, r));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

@@ -10,8 +10,6 @@ namespace basic {
 Particles::Particles(Simulation& simulation, const SortParameters& parameters)
   : interfaces::Particles(simulation.world, parameters), simulation_(simulation)
 {
-  PetscCallAbort(PETSC_COMM_WORLD, DMCreateGlobalVector(da, &J));
-  PetscCallAbort(PETSC_COMM_WORLD, DMCreateLocalVector(da, &J_loc));
 }
 
 PetscErrorCode Particles::push()
@@ -49,14 +47,6 @@ PetscErrorCode Particles::push()
   PetscCall(DMDAVecRestoreArrayWrite(da, J_loc, &J_arr));
   PetscCall(DMLocalToGlobal(da, J_loc, ADD_VALUES, J));
   PetscCall(VecAXPY(simulation_.J, 1.0, J));
-  PetscFunctionReturn(PETSC_SUCCESS);
-}
-
-PetscErrorCode Particles::finalize()
-{
-  PetscFunctionBeginUser;
-  PetscCall(VecDestroy(&J));
-  PetscCall(VecDestroy(&J_loc));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

@@ -12,11 +12,6 @@ Vector3R interpolate_B_s1(Arr B_g, const Vector3R& coord);
 
 namespace ecsim {
 
-static constexpr PetscReal atol = 1e-7;
-static constexpr PetscReal rtol = 1e-5;
-static constexpr PetscReal divtol = PETSC_DETERMINE;
-static constexpr PetscInt maxit = 1000;
-
 /// @note The following is a recreation of the published results,
 /// @see https://doi.org/10.1016/j.jcp.2017.01.002
 class Simulation : public interfaces::Simulation {
@@ -43,6 +38,9 @@ public:
 
   void get_array_offset(PetscInt begin_g, PetscInt end_g, PetscInt& off);
 
+  PetscErrorCode set_tolerances(
+    PetscReal atol, PetscReal rtol, PetscReal divtol, PetscInt maxit);
+
 protected:
   PetscErrorCode initialize_implementation() override;
   PetscErrorCode timestep_implementation(PetscInt t) override;
@@ -67,9 +65,10 @@ protected:
   PetscErrorCode fill_matrix_indices(PetscInt* coo_i, PetscInt* coo_j);
   PetscErrorCode fill_ecsim_current(PetscReal* coo_v);
 
-  Mat rotE;
-  Mat rotB;
-  Mat matM;
+  PetscReal atol = 1e-7;
+  PetscReal rtol = 1e-5;
+  PetscReal divtol = PETSC_DETERMINE;
+  PetscInt maxit = 1000;
 
   KSP ksp;
 

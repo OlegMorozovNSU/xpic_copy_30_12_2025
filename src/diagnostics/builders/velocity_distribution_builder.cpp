@@ -25,7 +25,7 @@ PetscErrorCode VelocityDistributionBuilder::build(
   geometry.at("name").get_to(name);
 
   Tester test;
-  FieldView::Region xreg_aabb;
+  Region xreg_aabb;
   xreg_aabb.dim = 2;
   xreg_aabb.dof = 1;
 

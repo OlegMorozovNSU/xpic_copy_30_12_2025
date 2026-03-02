@@ -24,7 +24,7 @@ int main(int argc, char** argv)
 
   /// @note We should create the diagnostic within some scope to properly run the destructors.
   {
-    FieldView::Region region{
+    Region region{
       .dim = 4,
       .dof = 3,
       .start = Vector4I{0, 0, 0, 0},

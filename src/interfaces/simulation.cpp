@@ -10,34 +10,86 @@
 #include "src/impls/ecsim/simulation.h"
 #include "src/impls/ecsimcorr/simulation.h"
 #include "src/utils/configuration.h"
+#include "src/utils/operators.h"
+
+std::unique_ptr<interfaces::Simulation> build_simulation()
+{
+  const Configuration::json_t& json = CONFIG().json;
+
+  std::string simulation_str;
+  json.at("Simulation").get_to(simulation_str);
+
+  std::unique_ptr<interfaces::Simulation> simulation = nullptr;
+
+  if (simulation_str == "basic")
+    simulation = std::make_unique<basic::Simulation>();
+  else if (simulation_str == "eccapfim")
+    simulation = std::make_unique<eccapfim::Simulation>();
+  else if (simulation_str == "ecsim")
+    simulation = std::make_unique<ecsim::Simulation>();
+  else if (simulation_str == "ecsimcorr")
+    simulation = std::make_unique<ecsimcorr::Simulation>();
+  else
+    throw std::runtime_error("Unkown simulation is used: " + simulation_str);
+
+  LOG("Simulation is built, scheme {}", simulation_str);
+  return simulation;
+}
 
 namespace interfaces {
 
 PetscErrorCode Simulation::initialize()
 {
   PetscFunctionBeginUser;
+  LOG("Running initialization");
+
   PetscCall(world.initialize());
   PetscCall(log_information());
 
-  da = world.da;
+  PetscCall(PetscLogStageRegister("Commands run", &stagenums[0]));
+  PetscCall(PetscLogStageRegister("Diagnostics run", &stagenums[1]));
 
-  LOG("Running initialize implementation");
-  PetscCall(initialize_implementation());
+  da = world.da;
+  da_rho = world.da_rho;
+
+  PetscCall(DMCreateGlobalVector(da, &E));
+  PetscCall(DMCreateGlobalVector(da, &B));
+  PetscCall(DMCreateGlobalVector(da, &B0));
+  PetscCall(DMCreateGlobalVector(da, &J));
+  PetscCall(DMCreateLocalVector(da, &E_loc));
+  PetscCall(DMCreateLocalVector(da, &B_loc));
+  PetscCall(DMCreateLocalVector(da, &J_loc));
 
   PetscCall(PetscObjectSetName((PetscObject)E, "E"));
   PetscCall(PetscObjectSetName((PetscObject)B, "B"));
   PetscCall(PetscObjectSetName((PetscObject)J, "J"));
   PetscCall(PetscObjectSetName((PetscObject)B0, "B0"));
 
-  std::vector<Vec> currents;
+  PetscCall(DMSetMatrixPreallocateOnly(da, PETSC_FALSE));
+  PetscCall(DMSetMatrixPreallocateSkip(da, PETSC_TRUE));
+
+  Rotor rotor(da);
+  PetscCall(rotor.create_positive(&rotE));
+  PetscCall(rotor.create_negative(&rotB));
+
+  PetscCall(MatProductCreate(rotB, rotE, NULL, &matM));
+  PetscCall(MatProductSetType(matM, MATPRODUCT_AB));
+  PetscCall(MatProductSetFromOptions(matM));
+  PetscCall(MatProductSymbolic(matM));
+  PetscCall(MatProductNumeric(matM));
+
+  Divergence divergence(da);
+  PetscCall(divergence.create_negative(&divE));
+
+  PetscCall(initialize_implementation());
+
   std::vector<const interfaces::Particles*> particles;
   for (const auto& sort : particles_) {
-    currents.emplace_back(sort->J);
     particles.emplace_back(sort.get());
   }
-  currents.emplace_back(J);
 
   /// @todo Use a shared pointers for diagnostics
+  /// @todo Or else store the `TableDiagnostics` themselves
   bool append_energy_conservation = true;
 
   for (auto& diagnostic : diagnostics_) {
@@ -46,13 +98,14 @@ PetscErrorCode Simulation::initialize()
   }
 
   if (append_energy_conservation) {
-    diagnostics_.emplace_back(std::make_unique<Energy>(*this));
+    diagnostics_.emplace_back( //
+      std::make_unique<Energy>(*this));
   }
 
-  diagnostics_.emplace_back(
-    std::make_unique<ChargeConservation>(da, currents, particles));
+  diagnostics_.emplace_back( //
+    std::make_unique<ChargeConservation>(*this));
 
-  diagnostics_.emplace_back(
+  diagnostics_.emplace_back( //
     std::make_unique<MomentumConservation>(da, E, particles));
 
   std::vector<Command_up> presets;
@@ -61,11 +114,11 @@ PetscErrorCode Simulation::initialize()
   PetscCall(build_diagnostics(*this, diagnostics_));
 
   LOG("Executing presets");
-  for (auto&& preset : presets)
+  for (const Command_up& preset : presets)
     preset->execute(start);
 
-  PetscCall(PetscLogStageRegister("Commands run", &stagenums[0]));
-  PetscCall(PetscLogStageRegister("Diagnostics run", &stagenums[1]));
+  for (const Particles_sp& sort : particles_)
+    PetscCall(sort->initialize_rho());
 
   for (const Diagnostic_up& diagnostic : diagnostics_)
     PetscCall(diagnostic->diagnose(start));
@@ -87,6 +140,9 @@ PetscErrorCode Simulation::calculate()
 
     PetscCall(timestep_implementation(t));
 
+    for (const Particles_sp& sort : particles_)
+      PetscCall(sort->calculate_rho());
+
     PetscCall(PetscLogStagePush(stagenums[1]));
     for (const Diagnostic_up& diagnostic : diagnostics_)
       PetscCall(diagnostic->diagnose(t));
@@ -106,6 +162,19 @@ PetscErrorCode Simulation::finalize()
 
   for (const Particles_sp& sort : particles_)
     PetscCall(sort->finalize());
+
+  PetscCall(VecDestroy(&E));
+  PetscCall(VecDestroy(&B));
+  PetscCall(VecDestroy(&B0));
+  PetscCall(VecDestroy(&J));
+  PetscCall(VecDestroy(&E_loc));
+  PetscCall(VecDestroy(&B_loc));
+  PetscCall(VecDestroy(&J_loc));
+
+  PetscCall(MatDestroy(&rotE));
+  PetscCall(MatDestroy(&rotB));
+  PetscCall(MatDestroy(&matM));
+  PetscCall(MatDestroy(&divE));
 
   PetscCall(world.finalize());
   PetscFunctionReturn(PETSC_SUCCESS);
@@ -155,28 +224,3 @@ Particles& Simulation::get_named_particles(std::string_view name)
 }
 
 }  // namespace interfaces
-
-
-std::unique_ptr<interfaces::Simulation> build_simulation()
-{
-  const Configuration::json_t& json = CONFIG().json;
-
-  std::string simulation_str;
-  json.at("Simulation").get_to(simulation_str);
-
-  std::unique_ptr<interfaces::Simulation> simulation = nullptr;
-
-  if (simulation_str == "basic")
-    simulation = std::make_unique<basic::Simulation>();
-  else if (simulation_str == "eccapfim")
-    simulation = std::make_unique<eccapfim::Simulation>();
-  else if (simulation_str == "ecsim")
-    simulation = std::make_unique<ecsim::Simulation>();
-  else if (simulation_str == "ecsimcorr")
-    simulation = std::make_unique<ecsimcorr::Simulation>();
-  else
-    throw std::runtime_error("Unkown simulation is used: " + simulation_str);
-
-  LOG("Simulation is built, scheme {}", simulation_str);
-  return simulation;
-}

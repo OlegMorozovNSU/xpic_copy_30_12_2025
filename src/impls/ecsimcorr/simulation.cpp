@@ -73,12 +73,12 @@ PetscErrorCode Simulation::final_update()
 
   Vec util;
   PetscReal norm;
-  PetscCall(DMGetGlobalVector(world.da, &util));
+  PetscCall(DMGetGlobalVector(da, &util));
 
   PetscCall(MatMultAdd(matL, Ec, currI, currI));  // currI = currI + matL * E^{n+1/2}
   PetscCall(VecWAXPY(util, -1, currI, currJe));  // util = -currI + currJe
   PetscCall(VecNorm(util, NORM_2, &norm));
-  PetscCall(DMRestoreGlobalVector(world.da, &util));
+  PetscCall(DMRestoreGlobalVector(da, &util));
   LOG("  Norm of the difference in ECSIM and Esirkepov currents: {:.7f}", norm);
 
   PetscCall(VecSwap(Ep, Ec));
@@ -103,7 +103,6 @@ PetscErrorCode Simulation::init_particles()
 PetscErrorCode Simulation::init_vectors()
 {
   PetscFunctionBeginUser;
-  DM da = world.da;
   PetscCall(ecsim::Simulation::init_vectors());
   PetscCall(DMCreateGlobalVector(da, &Ec));
   PetscCall(DMCreateGlobalVector(da, &currJe));
@@ -119,7 +118,7 @@ PetscErrorCode Simulation::init_ksp_solvers()
     {"correct", correct},
   };
 
-  conv_hist.resize(ecsim::maxit);
+  conv_hist.resize(maxit);
 
   for (auto&& [name, ksp] : map) {
     PetscCall(KSPCreate(PETSC_COMM_WORLD, &ksp));
@@ -127,8 +126,8 @@ PetscErrorCode Simulation::init_ksp_solvers()
     PetscCall(KSPSetOptionsPrefix(ksp, (name + "_").c_str()));
 
     PetscCall(KSPSetErrorIfNotConverged(ksp, PETSC_TRUE));
-    PetscCall(KSPSetTolerances(ksp, ecsim::rtol, ecsim::atol, ecsim::divtol, ecsim::maxit));
-    PetscCall(KSPSetResidualHistory(ksp, conv_hist.data(), ecsim::maxit, PETSC_TRUE));
+    PetscCall(KSPSetTolerances(ksp, rtol, atol, divtol, maxit));
+    PetscCall(KSPSetResidualHistory(ksp, conv_hist.data(), maxit, PETSC_TRUE));
     PetscCall(KSPSetFromOptions(ksp));
   }
 
@@ -158,7 +157,7 @@ PetscErrorCode Simulation::finalize()
   PetscCall(ecsim::Simulation::finalize());
   PetscCall(KSPDestroy(&correct));
   PetscCall(VecDestroy(&Ec));
-  PetscCall(VecDestroy(&currJe));
+  PetscCall(VecDestroy(&currI));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

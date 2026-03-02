@@ -12,7 +12,7 @@ FieldViewBuilder::FieldViewBuilder(
 PetscErrorCode FieldViewBuilder::build(const Configuration::json_t& info)
 {
   PetscFunctionBeginUser;
-  FieldView::Region region;
+  Region region;
   region.start = Vector4I(0);
   region.size = Vector4I(geom_nx, geom_ny, geom_nz, 3);
   region.dim = 4;
@@ -50,7 +50,7 @@ PetscErrorCode FieldViewBuilder::build(const Configuration::json_t& info)
 }
 
 void FieldViewBuilder::parse_region_start_size(const Configuration::json_t& info,
-  FieldView::Region& region, const std::string& name)
+  Region& region, const std::string& name)
 {
   Vector3R start{0.0};
   Vector3R size{Geom};
@@ -132,7 +132,7 @@ void FieldViewBuilder::parse_plane_position(
 }
 
 void FieldViewBuilder::check_region(
-  const FieldView::Region& region, const std::string& name) const
+  const Region& region, const std::string& name) const
 {
   Vector3I start = vector_cast(region.start);
   Vector3I size = vector_cast(region.size);

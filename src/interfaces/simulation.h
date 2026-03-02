@@ -29,6 +29,7 @@ public:
   World world;
 
   DM da;
+  DM da_rho;
 
   Vec E;
   Vec E_loc;
@@ -43,6 +44,11 @@ public:
   Vec J;
   Vec J_loc;
   Arr J_arr;
+
+  Mat rotE;
+  Mat rotB;
+  Mat matM; // (rotB * rotE)
+  Mat divE;
 
   /**
    * @brief Container of abstract particles, the down-casted pointers to this

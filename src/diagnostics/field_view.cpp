@@ -9,7 +9,8 @@ std::unique_ptr<FieldView> FieldView::create(
 {
   PetscFunctionBeginUser;
   MPI_Comm newcomm;
-  PetscCallAbort(PETSC_COMM_WORLD, get_local_communicator(da, region, &newcomm));
+  PetscCallAbort(PETSC_COMM_WORLD, World::create_local_comm(da, region, &newcomm));
+
   if (newcomm == MPI_COMM_NULL)
     PetscFunctionReturn(nullptr);
 
@@ -18,33 +19,12 @@ std::unique_ptr<FieldView> FieldView::create(
   PetscFunctionReturn(std::unique_ptr<FieldView>(diagnostic));
 }
 
-/// @returns Non-null communicator for those processes,
-/// where region intersects with local boundaries of DM.
-PetscErrorCode FieldView::get_local_communicator(
-  DM da, const Region& region, MPI_Comm* newcomm)
-{
-  PetscFunctionBeginUser;
-  Vector3I r_start(region.start);
-  Vector3I r_size(region.size);
-  Vector3I start;
-  Vector3I size;
-  PetscCall(DMDAGetCorners(da, REP3_A(&start), REP3_A(&size)));
-
-  PetscMPIInt color =
-    is_region_intersect_bounds(r_start, r_size, start, size) ? 1 : MPI_UNDEFINED;
-  PetscMPIInt rank;
-  PetscCallMPI(MPI_Comm_rank(PETSC_COMM_WORLD, &rank));
-  PetscCallMPI(MPI_Comm_split(PETSC_COMM_WORLD, color, rank, newcomm));
-  PetscFunctionReturn(PETSC_SUCCESS);
-}
-
 FieldView::FieldView(DM da, Vec field)
   : da_(da), field_(field)
 {
 }
 
-FieldView::FieldView(
-  const std::string& out_dir, DM da, Vec field, MPI_Comm newcomm)
+FieldView::FieldView(const std::string& out_dir, DM da, Vec field, MPI_Comm newcomm)
   : interfaces::Diagnostic(out_dir), da_(da), field_(field), comm_(newcomm)
 {
 }

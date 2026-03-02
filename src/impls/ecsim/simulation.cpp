@@ -134,7 +134,7 @@ PetscErrorCode Simulation::initialize_implementation()
   PetscCall(init_ksp_solvers());
   PetscCall(init_particles());
 
-  J = currI;
+  currI = J;
 
   PetscCall(PetscLogStagePop());
   PetscCall(init_clock.pop());
@@ -534,35 +534,15 @@ PetscErrorCode Simulation::init_particles()
 PetscErrorCode Simulation::init_vectors()
 {
   PetscFunctionBeginUser;
-  PetscCall(DMCreateGlobalVector(da, &E));
   PetscCall(DMCreateGlobalVector(da, &Ep));
-  PetscCall(DMCreateGlobalVector(da, &B));
-  PetscCall(DMCreateGlobalVector(da, &B0));
-  PetscCall(DMCreateGlobalVector(da, &currI));
-
-  PetscCall(DMCreateLocalVector(da, &E_loc));
-  PetscCall(DMCreateLocalVector(da, &B_loc));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
 PetscErrorCode Simulation::init_matrices()
 {
   PetscFunctionBeginUser;
-  PetscCall(DMSetMatrixPreallocateOnly(da, PETSC_FALSE));
-  PetscCall(DMSetMatrixPreallocateSkip(da, PETSC_TRUE));
-
   PetscCall(DMCreateMatrix(da, &matL));
   PetscCall(MatSetOption(matL, MAT_NEW_NONZERO_LOCATIONS, PETSC_TRUE));
-
-  Rotor rotor(da);
-  PetscCall(rotor.create_positive(&rotE));
-  PetscCall(rotor.create_negative(&rotB));
-
-  PetscCall(MatProductCreate(rotB, rotE, nullptr, &matM));
-  PetscCall(MatProductSetType(matM, MATPRODUCT_AB));
-  PetscCall(MatProductSetFromOptions(matM));
-  PetscCall(MatProductSymbolic(matM));
-  PetscCall(MatProductNumeric(matM));
 
   PetscCall(MatScale(matM, 0.5 * dt * dt));
   PetscCall(MatShift(matM, 2.0));
@@ -585,26 +565,24 @@ PetscErrorCode Simulation::init_ksp_solvers()
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
+PetscErrorCode Simulation::set_tolerances(
+  PetscReal atol, PetscReal rtol, PetscReal divtol, PetscInt maxit)
+{
+  PetscFunctionBeginUser;
+  this->atol = atol;
+  this->rtol = rtol;
+  this->divtol = divtol;
+  this->maxit = maxit;
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
 PetscErrorCode Simulation::finalize()
 {
   PetscFunctionBeginUser;
   PetscCall(interfaces::Simulation::finalize());
-
   PetscCall(KSPDestroy(&ksp));
-
   PetscCall(MatDestroy(&matL));
-  PetscCall(MatDestroy(&matM));
-  PetscCall(MatDestroy(&rotE));
-  PetscCall(MatDestroy(&rotB));
-
-  PetscCall(VecDestroy(&E));
   PetscCall(VecDestroy(&Ep));
-  PetscCall(VecDestroy(&B));
-  PetscCall(VecDestroy(&B0));
-  PetscCall(VecDestroy(&currI));
-
-  PetscCall(VecDestroy(&E_loc));
-  PetscCall(VecDestroy(&B_loc));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

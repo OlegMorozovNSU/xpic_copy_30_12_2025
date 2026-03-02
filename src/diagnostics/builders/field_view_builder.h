@@ -31,7 +31,7 @@ public:
 
 protected:
   void parse_region_start_size(const Configuration::json_t& info,
-    FieldView::Region& region, const std::string& name);
+    Region& region, const std::string& name);
 
   void parse_res_dir_suffix(
     const Configuration::json_t& info, std::string& suffix);
@@ -40,7 +40,7 @@ protected:
     const Configuration::json_t& info, std::string& plane, PetscReal& position);
 
   void check_region(
-    const FieldView::Region& region, const std::string& name) const;
+    const Region& region, const std::string& name) const;
 };
 
 #endif  // SRC_DIAGNOSTICS_BUILDERS_FIELD_VIEW_BUILDER_H

@@ -13,7 +13,7 @@ std::unique_ptr<VelocityDistribution> VelocityDistribution::create(
   PetscFunctionBeginUser;
   // Communicator is based on axis-aligned bounding box (AABB) of space integration domain
   MPI_Comm newcomm;
-  PetscCallAbort(PETSC_COMM_WORLD, get_local_communicator(particles.world.da, xreg_aabb, &newcomm));
+  PetscCallAbort(PETSC_COMM_WORLD, World::create_local_comm(particles.world.da, xreg_aabb, &newcomm));
   if (newcomm == MPI_COMM_NULL)
     PetscFunctionReturn(nullptr);
 

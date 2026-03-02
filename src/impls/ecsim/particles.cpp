@@ -11,11 +11,8 @@ namespace ecsim {
 Particles::Particles(Simulation& simulation, const SortParameters& parameters)
   : interfaces::Particles(simulation.world, parameters), simulation_(simulation)
 {
-  PetscCallAbort(PETSC_COMM_WORLD, DMCreateGlobalVector(da, &currI));
-  PetscCallAbort(PETSC_COMM_WORLD, DMCreateLocalVector(da, &currI_loc));
-
-  J = currI;
-  J_loc = currI_loc;
+  currI = J;
+  currI_loc = J_loc;
 
   PetscCallAbort(PETSC_COMM_WORLD, PetscClassIdRegister("ecsim::Particles", &classid));
   PetscCallAbort(PETSC_COMM_WORLD, PetscLogEventRegister("first_push", classid, &events[0]));
@@ -208,14 +205,6 @@ PetscErrorCode Particles::clear_sources()
   PetscFunctionBeginUser;
   PetscCall(VecSet(currI, 0.0));
   PetscCall(VecSet(currI_loc, 0.0));
-  PetscFunctionReturn(PETSC_SUCCESS);
-}
-
-PetscErrorCode Particles::finalize()
-{
-  PetscFunctionBeginUser;
-  PetscCall(VecDestroy(&currI));
-  PetscCall(VecDestroy(&currI_loc));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

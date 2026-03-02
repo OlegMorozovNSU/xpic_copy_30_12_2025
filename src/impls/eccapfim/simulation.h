@@ -66,14 +66,9 @@ protected:
   Vec B_hk;
   PetscErrorCode from_snes(Vec v, Vec vE, Vec vB);
   PetscErrorCode to_snes(Vec vE, Vec vB, Vec v);
-#else
-  Mat matM;
 #endif
 
   Vec E_hk;
-
-  Mat rotE;
-  Mat rotB;
 
   Vec sol;
   SNES snes;
