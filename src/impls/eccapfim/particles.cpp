@@ -76,7 +76,7 @@ PetscErrorCode Particles::form_iteration()
     return false;
   };
 
-#pragma omp parallel for reduction(+ : avgit, avgcell, maxcell)
+#pragma omp parallel for reduction(+ : avgit, avgcell), reduction(max : maxcell)
   for (PetscInt g = 0; g < (PetscInt)storage.size(); ++g) {
     ImplicitEsirkepov util(E_arr, B_arr, J_arr);
 
