@@ -386,8 +386,8 @@ PetscErrorCode Simulation::init_log_stages()
   PetscCall(PetscLogEventRegister("to_snes", classid, &events[4]));
 
   PetscCall(PetscLogStageRegister("Initialization", &stagenums[0]));
-  PetscCall(PetscLogStageRegister("Init iteraction", &stagenums[1]));
-  PetscCall(PetscLogStageRegister("Calc iteraction", &stagenums[2]));
+  PetscCall(PetscLogStageRegister("Init iteration", &stagenums[1]));
+  PetscCall(PetscLogStageRegister("Calc iteration", &stagenums[2]));
   PetscCall(PetscLogStageRegister("After iteration", &stagenums[3]));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
