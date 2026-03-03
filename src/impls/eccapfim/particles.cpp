@@ -181,6 +181,16 @@ PetscErrorCode Particles::form_iteration()
 
   PetscCall(DMDAVecRestoreArrayWrite(da, J_loc, &J_arr));
   PetscCall(DMLocalToGlobal(da, J_loc, ADD_VALUES, J));
+
+  PetscCallMPI(MPI_Allreduce(MPI_IN_PLACE, &avgit, 1, MPIU_REAL, MPI_SUM, PETSC_COMM_WORLD));
+  PetscCallMPI(MPI_Allreduce(MPI_IN_PLACE, &avgcell, 1, MPIU_REAL, MPI_SUM, PETSC_COMM_WORLD));
+  PetscCallMPI(MPI_Allreduce(MPI_IN_PLACE, &maxcell, 1, MPIU_INT, MPI_MAX, PETSC_COMM_WORLD));
+
+  PetscMPIInt size;
+  PetscCallMPI(MPI_Comm_size(PETSC_COMM_WORLD, &size));
+
+  avgit /= (PetscReal)size;
+  avgcell /= (PetscReal)size;
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
