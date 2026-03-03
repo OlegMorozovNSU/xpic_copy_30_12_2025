@@ -94,26 +94,15 @@ set(utils
   src/utils/ziggurat_gaussian.cpp
 )
 
-set(impls_basic
+set(impls
   src/impls/basic/simulation.cpp
   src/impls/basic/particles.cpp
-)
-
-set(impls_ecsim
   src/impls/ecsim/simulation.cpp
   src/impls/ecsim/particles.cpp
-)
-
-set(impls_ecsimcorr
   src/impls/ecsimcorr/simulation.cpp
   src/impls/ecsimcorr/particles.cpp
-)
-
-set(impls_eccapfim
   src/impls/eccapfim/simulation.cpp
   src/impls/eccapfim/particles.cpp
-  src/impls/eccapfim/cell_traversal.cpp
-  src/impls/eccapfim/convergence_history.cpp
 )
 
 add_library(
@@ -124,11 +113,7 @@ add_library(
   ${commands}
   ${diagnostics}
   ${utils}
-  ${impls_basic}
-  ${impls_ecsim}
-  ${impls_ecsimcorr}
-  ${impls_ricketson}
-  ${impls_eccapfim}
+  ${impls}
 )
 
 target_precompile_headers(

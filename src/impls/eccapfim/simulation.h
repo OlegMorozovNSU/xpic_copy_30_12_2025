@@ -4,6 +4,7 @@
 #include <petscsnes.h>
 
 #include "src/interfaces/simulation.h"
+#include "src/diagnostics/utils/table_diagnostic.h"
 #include "src/impls/eccapfim/particles.h"
 #include "src/utils/sync_clock.h"
 
@@ -81,6 +82,14 @@ protected:
   SyncClock clock;
 
   friend class ConvergenceHistory;
+};
+
+
+class ConvergenceHistory : public TableDiagnostic {
+public:
+  ConvergenceHistory(const Simulation& simulation);
+  PetscErrorCode add_columns(PetscInt t) override;
+  const Simulation& simulation;
 };
 
 }  // namespace eccapfim
