@@ -4,6 +4,7 @@
 #define PARTICLES_FORM_FACTOR 2
 #define RANDOM_SEED           false
 #define LOGGING               true
+#define LOGGING_TIMESTAMPS    true
 
 #include <petscsystypes.h>
 

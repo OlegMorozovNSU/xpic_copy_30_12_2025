@@ -5,6 +5,7 @@
 #include <omp.h>
 
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <exception>
 #include <filesystem>
