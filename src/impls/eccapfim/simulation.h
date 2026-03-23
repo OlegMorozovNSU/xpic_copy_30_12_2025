@@ -35,10 +35,8 @@ protected:
   PetscErrorCode initialize_implementation() override;
   PetscErrorCode timestep_implementation(PetscInt t) override;
 
-  PetscErrorCode init_vectors();
-  PetscErrorCode init_matrices();
-  PetscErrorCode init_snes_solver();
-  PetscErrorCode init_log_stages();
+  PetscErrorCode init_snes();
+  PetscErrorCode init_log();
 
   // Iterative solution procedures
   PetscErrorCode init_iteration();

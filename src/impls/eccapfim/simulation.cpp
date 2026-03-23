@@ -10,18 +10,13 @@ namespace eccapfim {
 PetscErrorCode Simulation::initialize_implementation()
 {
   PetscFunctionBeginUser;
-  PetscCall(init_log_stages());
+  PetscCall(init_log());
 
   SyncClock init_clock;
   PetscCall(init_clock.push(__FUNCTION__));
   PetscCall(PetscLogStagePush(stagenums[0]));
 
-  /// @todo Simplify the initialization by putting everything in here
-  /// @todo Remove the repetitive initialization of `interfaces::Simulation` fields
-  PetscCall(init_vectors());
-  PetscCall(init_matrices());
-  PetscCall(init_snes_solver());
-
+  PetscCall(init_snes());
   PetscCall(init_particles(*this, particles_));
 
   diagnostics_.emplace_back(std::make_unique<ConvergenceHistory>(*this));
@@ -314,49 +309,27 @@ PetscErrorCode Simulation::to_snes(Vec vE, Vec vB, Vec v)
 #endif
 
 
-PetscErrorCode Simulation::init_vectors()
+PetscErrorCode Simulation::init_snes()
 {
   PetscFunctionBeginUser;
   PetscCall(DMCreateGlobalVector(da, &E_hk));
 
 #if SNES_ITERATE_B
   PetscCall(DMCreateGlobalVector(da, &B_hk));
-#endif
-  PetscFunctionReturn(PETSC_SUCCESS);
-}
+  PetscCall(MatScale(rotB, -1));
 
-PetscErrorCode Simulation::init_matrices()
-{
-  PetscFunctionBeginUser;
-#if !SNES_ITERATE_B
+  Region region{
+    .dim = 6,
+    .dof = 1,
+    .start = Vector4I(0, 0, 0, 0),
+    .size = Vector4I(geom_nx, geom_ny, geom_nz, 6),
+  };
+  PetscCall(World::create_local_dm(da, region, PETSC_COMM_WORLD, &da_rho));
+  PetscCall(DMCreateGlobalVector(da_EB, &sol));
+#else
   PetscCall(MatScale(matM, +0.25 * dt * dt));
   PetscCall(MatScale(rotB, -0.5 * dt));
   PetscCall(MatScale(rotE, -dt));
-#else
-  PetscCall(MatScale(rotB, -1));
-#endif
-  PetscFunctionReturn(PETSC_SUCCESS);
-}
-
-PetscErrorCode Simulation::init_snes_solver()
-{
-  PetscFunctionBeginUser;
-#if SNES_ITERATE_B
-  PetscInt gn[3];
-  PetscInt procs[3];
-  PetscInt s;
-  DMBoundaryType bounds[3];
-  DMDAStencilType st;
-  PetscCall(DMDAGetInfo(da, NULL, REP3_A(&gn), REP3_A(&procs), NULL, &s, REP3_A(&bounds), &st));
-
-  const PetscInt* lgn[3];
-  PetscCall(DMDAGetOwnershipRanges(da, REP3_A(&lgn)));
-
-  PetscCall(DMDACreate3d(PETSC_COMM_WORLD, REP3_A(bounds), st, REP3_A(gn), REP3_A(procs), 6, st, REP3_A(lgn), &da_EB));
-  PetscCall(DMSetUp(da_EB));
-
-  PetscCall(DMCreateGlobalVector(da_EB, &sol));
-#else
   PetscCall(DMCreateGlobalVector(da, &sol));
 #endif
 
@@ -374,7 +347,7 @@ PetscErrorCode Simulation::init_snes_solver()
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
-PetscErrorCode Simulation::init_log_stages()
+PetscErrorCode Simulation::init_log()
 {
   PetscFunctionBeginUser;
   PetscCall(PetscClassIdRegister("eccapfim::Simulation", &classid));
