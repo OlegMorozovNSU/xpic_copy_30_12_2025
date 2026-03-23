@@ -73,23 +73,24 @@ PetscErrorCode Simulation::calc_iteration()
 
   PetscCall(SNESSolve(snes, NULL, sol));
 
-  // Convergence analysis
   const char* name;
-  PetscCall(PetscObjectGetName((PetscObject)snes, &name));
-  LOG("  SNESSolve() has finished for \"{}\", SNESConvergedReasonView():", name);
-  PetscCall(SNESConvergedReasonView(snes, PETSC_VIEWER_STDOUT_WORLD));
-
+  SNESConvergedReason reason;
   PetscInt nit, lit, len;
+
+  PetscCall(PetscObjectGetName((PetscObject)snes, &name));
+  PetscCall(SNESGetConvergedReason(snes, &reason));
   PetscCall(SNESGetIterationNumber(snes, &nit));
   PetscCall(SNESGetLinearSolveIterations(snes, &lit));
   PetscCall(SNESGetConvergenceHistory(snes, NULL, NULL, &len));
 
-  LOG("  Total nonlinear iterations: {}", nit);
-  LOG("  Average linear iterations: {}", lit / (PetscReal)nit);
-  LOG("  Convergence history for this solution:");
+  LOG("  SNESSolve has finished for \"{}\"", name);
+  LOG("    Reason why solver finished: {}", SNESConvergedReasons[reason]);
+  LOG("    Total nonlinear iterations: {}", nit);
+  LOG("    Average linear iterations: {}", lit / (PetscReal)nit);
+  LOG("    Convergence history for this solution:");
 
   for (PetscInt i = 0; i < len; ++i) {
-    LOG("    {:2d} SNES Function norm {:e}", i, conv_hist[i]);
+    LOG("      {:2d} SNES Function norm {:e}", i, conv_hist[i]);
   }
 
   for (const auto& sort : particles_) {
@@ -102,8 +103,6 @@ PetscErrorCode Simulation::calc_iteration()
   PetscCall(PetscLogStagePop());
   PetscCall(clock.pop());
 
-  SNESConvergedReason reason;
-  PetscCall(SNESGetConvergedReason(snes, &reason));
   PetscCheck(reason >= 0, PetscObjectComm((PetscObject)snes), PETSC_ERR_NOT_CONVERGED, "SNESSolve has not converged");
   PetscFunctionReturn(PETSC_SUCCESS);
 }

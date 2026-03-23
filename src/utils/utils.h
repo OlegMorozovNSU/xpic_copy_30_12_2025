@@ -83,42 +83,49 @@ PetscErrorCode log_statistics(std::string prefix, PetscInt agg, MPI_Comm comm);
 
 #if LOGGING
   #if LOGGING_TIMESTAMPS
-    #define LOG_TIMESTAMP()                                                          \
-    do {                                                                             \
-      const auto now = std::chrono::system_clock::now();                             \
-      if (const auto* local_zone = std::chrono::current_zone()) {                    \
-        const auto local_now = local_zone->to_local(now);                            \
-        const auto local_sec = std::chrono::floor<std::chrono::seconds>(local_now);  \
-        std::cout << std::format("[{:%m.%d %H:%M:%S}]: ", local_sec);                \
-      }                                                                              \
-      else {                                                                         \
-        const auto utc_sec = std::chrono::floor<std::chrono::seconds>(now);          \
-        std::cout << std::format("[{:%m.%d %H:%M:%S}]: ", utc_sec);                  \
-      }                                                                              \
-    }                                                                                \
-    while  (0)
+    #define LOG_TIMESTAMP()                                                     \
+      do {                                                                      \
+        auto now = std::chrono::system_clock::now();                            \
+        if (auto* local_zone = std::chrono::current_zone()) {                   \
+          auto local_now = local_zone->to_local(now);                           \
+          auto local_sec = std::chrono::floor<std::chrono::seconds>(local_now); \
+          std::cout << std::format("|{:%m.%d %H:%M:%S}| ", local_sec);          \
+        }                                                                       \
+        else {                                                                  \
+          auto utc_sec = std::chrono::floor<std::chrono::seconds>(now);         \
+          std::cout << std::format("|{:%m.%d %H:%M:%S}| ", utc_sec);            \
+        }                                                                       \
+      }                                                                         \
+      while (0)
   #else
-    #define LOG_TIMESTAMP() {}
+    #define LOG_TIMESTAMP() \
+      {                     \
+      }
   #endif
 
-  #define LOG_FLUSH() std::cout.flush()
-
-  #define LOG_IMPL(...)                              \
-      LOG_TIMESTAMP();                               \
-      std::cout << std::format(__VA_ARGS__) << "\n"; \
+  #define LOG_FLUSH()   std::cout.flush()
+  #define LOG_IMPL(...) std::cout << std::format(__VA_ARGS__) << "\n";
 
   #define LOG(...)                            \
     do {                                      \
       PetscMPIInt rank;                       \
       MPI_Comm_rank(PETSC_COMM_WORLD, &rank); \
-      if (rank == 0)                          \
+      if (rank == 0) {                        \
+        LOG_TIMESTAMP();                      \
         LOG_IMPL(__VA_ARGS__);                \
+      }                                       \
     }                                         \
     while (0)
 #else
-  #define LOG_FLUSH()   {}
-  #define LOG_IMPL(...) {}
-  #define LOG(...)      {}
+  #define LOG_FLUSH() \
+    {                 \
+    }
+  #define LOG_IMPL(...) \
+    {                   \
+    }
+  #define LOG(...) \
+    {              \
+    }
 #endif
 
 #endif  // SRC_UTILS_UTILS_H
