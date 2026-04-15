@@ -21,6 +21,10 @@ PetscErrorCode FieldViewBuilder::build(const Configuration::json_t& info)
   std::string field;
   info.at("field").get_to(field);
 
+  DM da;
+  Vec f;
+  parse_field(info, da, f, region, field);
+
   std::string suffix;
   region.start[3] = 0;
   region.size[3] = 3;
@@ -39,9 +43,7 @@ PetscErrorCode FieldViewBuilder::build(const Configuration::json_t& info)
 
   std::string res_dir = CONFIG().out_dir + "/" + field + suffix;
 
-  auto&& diagnostic = FieldView::create(
-    res_dir, simulation_.world.da, simulation_.get_named_vector(field), region);
-
+  auto&& diagnostic = FieldView::create(res_dir, da, f, region);
   if (!diagnostic)
     PetscFunctionReturn(PETSC_SUCCESS);
 
@@ -49,8 +51,39 @@ PetscErrorCode FieldViewBuilder::build(const Configuration::json_t& info)
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
-void FieldViewBuilder::parse_region_start_size(const Configuration::json_t& info,
-  Region& region, const std::string& name)
+void FieldViewBuilder::parse_field(const Configuration::json_t& info, DM& da,
+  Vec& f, Region& region, const std::string& name)
+{
+  DM da_field = simulation_.da;
+  DM da_rho = simulation_.da_rho;
+
+  std::map<std::string, std::pair<DM, Vec>> map{
+    {"E", {da_field, simulation_.E}},
+    {"B", {da_field, simulation_.B}},
+    {"J", {da_field, simulation_.J}},
+    {"B0", {da_field, simulation_.B0}},
+  };
+
+  for (auto&& sort : simulation_.particles_) {
+    std::string J_name = sort->parameters.sort_name + "_J";
+    std::string rho_name = sort->parameters.sort_name + "_rho";
+    map[J_name] = std::make_pair(da_field, sort->J);
+    map[rho_name] = std::make_pair(da_rho, sort->rho[1]);
+  }
+
+  if (!map.contains(name))
+    throw std::runtime_error("Incorrect name is used for " + name + ".");
+
+  std::tie(da, f) = map.at(name);
+
+  if (da == da_rho) {
+    region.dim = 3;
+    region.dof = 1;
+  }
+}
+
+void FieldViewBuilder::parse_region_start_size(
+  const Configuration::json_t& info, Region& region, const std::string& name)
 {
   Vector3R start{0.0};
   Vector3R size{Geom};
@@ -63,7 +96,7 @@ void FieldViewBuilder::parse_region_start_size(const Configuration::json_t& info
   PetscInt dim = (type == "3D") ? 3 : (type == "2D") ? 2 : -1;
 
   if (dim < 0)
-    throw std::runtime_error("Incorrect type is used for " + name + " .");
+    throw std::runtime_error("Incorrect type is used for " + name + ".");
 
   if (info.contains("start"))
     start = parse_vector(info, "start");

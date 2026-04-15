@@ -201,16 +201,6 @@ PetscErrorCode Simulation::log_information() const
 }
 
 
-Vec Simulation::get_named_vector(std::string_view name) const
-{
-  static const std::unordered_map<std::string_view, Vec> map{
-    {"E", E},
-    {"B", B},
-    {"B0", B0},
-  };
-  return map.at(name);
-}
-
 Particles& Simulation::get_named_particles(std::string_view name)
 {
   auto it = std::find_if(particles_.begin(), particles_.end(), //
