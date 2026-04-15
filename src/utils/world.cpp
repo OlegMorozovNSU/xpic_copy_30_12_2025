@@ -47,12 +47,14 @@ PetscErrorCode World::initialize()
   };
   PetscCall(create_local_dm(da, region, PETSC_COMM_WORLD, &da_rho));
 
+  PetscCall(DMSetApplicationContext(da, this));
+  PetscCall(DMSetApplicationContext(da_rho, this));
+
   PetscCall(DMDAGetNeighbors(da, &neighbors));
-
   PetscCall(DMDAGetCorners(da, REP3_A(&start), REP3_A(&size)));
-  end = start + size;
-
   PetscCall(DMDAGetGhostCorners(da, REP3_A(&gstart), REP3_A(&gsize)));
+
+  end = start + size;
   gend = gstart + gsize;
   PetscFunctionReturn(PETSC_SUCCESS);
 }
