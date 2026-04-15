@@ -4,7 +4,7 @@
 #include <petscsnes.h>
 
 #include "src/interfaces/simulation.h"
-#include "src/diagnostics/utils/table_diagnostic.h"
+#include "src/diagnostics/table_diagnostic.h"
 #include "src/impls/eccapfim/particles.h"
 #include "src/utils/sync_clock.h"
 

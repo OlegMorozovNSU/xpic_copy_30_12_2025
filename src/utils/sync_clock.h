@@ -4,7 +4,6 @@
 #include <stack>
 
 #include "src/pch.h"
-#include "src/utils/sync_file.h"
 #include "src/utils/utils.h"
 
 class SyncClock {

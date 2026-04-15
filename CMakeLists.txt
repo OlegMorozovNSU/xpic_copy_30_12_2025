@@ -54,7 +54,7 @@ set(diagnostics
   src/diagnostics/charge_conservation.cpp
   src/diagnostics/momentum_conservation.cpp
   src/diagnostics/velocity_distribution.cpp
-  src/diagnostics/utils/table_diagnostic.cpp
+  src/diagnostics/table_diagnostic.cpp
   src/diagnostics/builders/diagnostic_builder.cpp
   src/diagnostics/builders/field_view_builder.cpp
   src/diagnostics/builders/distribution_moment_builder.cpp
@@ -81,8 +81,6 @@ set(commands
 set(utils
   src/utils/utils.cpp
   src/utils/configuration.cpp
-  src/utils/mpi_binary_file.cpp
-  src/utils/sync_file.cpp
   src/utils/sync_clock.cpp
   src/utils/operators.cpp
   src/utils/shape.cpp

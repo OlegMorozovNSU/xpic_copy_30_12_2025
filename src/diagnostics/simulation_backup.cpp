@@ -1,7 +1,6 @@
 #include "simulation_backup.h"
 
 #include "src/utils/configuration.h"
-#include "src/utils/mpi_binary_file.h"
 
 SimulationBackup::SimulationBackup(const std::string& out_dir,
   PetscInt diagnose_period, std::vector<Vec> fields,

@@ -6,9 +6,7 @@
 
 #include "src/pch.h"
 #include "src/interfaces/diagnostic.h"
-#include "src/utils/mpi_binary_file.h"
 #include "src/utils/world.h"
-
 
 class FieldView : public interfaces::Diagnostic {
 public:
@@ -29,12 +27,23 @@ protected:
 
   virtual PetscErrorCode set_data_views(const Region& region);
 
-  DM da_;
-  Vec field_;
-  Region region_;
+  PetscErrorCode create_subarray(PetscInt ndim, const PetscInt sizes[],
+    const PetscInt subsizes[], const PetscInt starts[], MPI_Datatype* type);
 
-  MPI_Comm comm_;
-  MPI_BinaryFile file_;
+  PetscErrorCode open(MPI_Comm comm, const std::string& filename);
+  PetscErrorCode flush();
+  PetscErrorCode close();
+  PetscErrorCode write(PetscInt size, const PetscReal* data);
+
+  DM da;
+  Vec field;
+  Region region;
+
+  MPI_Comm comm = MPI_COMM_NULL;
+  MPI_File file = MPI_FILE_NULL;
+
+  MPI_Datatype memview = MPI_DATATYPE_NULL;
+  MPI_Datatype fileview = MPI_DATATYPE_NULL;
 };
 
 #endif  // SRC_DIAGNOSTICS_FIELD_VIEW_H

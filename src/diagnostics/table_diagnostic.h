@@ -2,7 +2,6 @@
 #define SRC_DIAGNOSTICS_UTILS_TABLE_DIAGNOSTIC_H
 
 #include "src/interfaces/diagnostic.h"
-#include "src/utils/sync_file.h"
 
 class TableDiagnostic : public interfaces::Diagnostic {
 public:
@@ -26,12 +25,12 @@ public:
     fvalue = std::format("{:^{}.{}s}", fvalue, w, w);
 
     if (pos >= 0) {
-      titles_.insert(titles_.begin() + pos, title);
-      values_.insert(values_.begin() + pos, fvalue);
+      titles.insert(titles.begin() + pos, title);
+      values.insert(values.begin() + pos, fvalue);
     }
     else {
-      titles_.push_back(title);
-      values_.push_back(fvalue);
+      titles.push_back(title);
+      values.push_back(fvalue);
     }
   }
 
@@ -42,10 +41,16 @@ public:
 
 protected:
   PetscErrorCode write_formatted(const std::vector<std::string>& container);
+  PetscErrorCode open(const std::string& filename);
+  PetscErrorCode flush();
+  PetscErrorCode close();
+  static bool is_synchronized();
 
-  SyncFile file_;
-  std::vector<std::string> titles_;
-  std::vector<std::string> values_;
+  std::vector<std::string> titles;
+  std::vector<std::string> values;
+
+  std::ofstream file;
+  const std::ofstream::openmode mode = std::ios::out | std::ios::trunc;
 };
 
 #endif  // SRC_DIAGNOSTICS_UTILS_TABLE_DIAGNOSTIC_H

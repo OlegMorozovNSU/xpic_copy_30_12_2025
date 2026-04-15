@@ -2,7 +2,7 @@
 #define SRC_DIAGNOSTICS_CHARGE_CONSERVATION_H
 
 #include "src/interfaces/simulation.h"
-#include "src/diagnostics/utils/table_diagnostic.h"
+#include "src/diagnostics/table_diagnostic.h"
 
 class ChargeConservation : public TableDiagnostic {
 public:

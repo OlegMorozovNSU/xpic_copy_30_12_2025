@@ -3,7 +3,7 @@
 
 #include "src/pch.h"
 #include "src/interfaces/simulation.h"
-#include "src/diagnostics/utils/table_diagnostic.h"
+#include "src/diagnostics/table_diagnostic.h"
 
 class Energy : public interfaces::Diagnostic {
 public:
