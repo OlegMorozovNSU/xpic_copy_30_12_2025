@@ -12,7 +12,7 @@ int main(int argc, char** argv)
   PetscCall(PetscInitialize(&argc, &argv, nullptr, help));
 
   if (argc < 2) {
-    LOG(help);
+    LOG_IMPL(help);
     return EXIT_FAILURE;
   }
 
