@@ -26,7 +26,7 @@ public:
 
 protected:
   /// @returns The string padded with the zeros of `geom_nt` width
-  static std::string format_time(PetscInt t);
+  std::string format_time(PetscInt t);
 
   std::string out_dir_;
   PetscInt diagnose_period_;
