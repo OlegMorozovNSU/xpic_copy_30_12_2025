@@ -2,6 +2,7 @@
 
 #include "src/diagnostics/builders/distribution_moment_builder.h"
 #include "src/diagnostics/builders/field_view_builder.h"
+#include "src/diagnostics/builders/field_view_zavg_builder.h"
 #include "src/diagnostics/builders/log_view_builder.h"
 #include "src/diagnostics/builders/simulation_backup_builder.h"
 #include "src/diagnostics/builders/velocity_distribution_builder.h"
@@ -41,6 +42,9 @@ PetscErrorCode build_diagnostics(
 
     if (name == "FieldView") {
       PetscCall(Builder::use_impl<FieldViewBuilder>(info, simulation, result));
+    }
+    else if (name == "FieldViewZAvg") {
+      PetscCall(Builder::use_impl<FieldViewZAvgBuilder>(info, simulation, result));
     }
     else if (name == "DistributionMoment") {
       PetscCall(Builder::use_impl<DistributionMomentBuilder>(info, simulation, result));

@@ -36,7 +36,6 @@ PetscErrorCode DistributionMomentBuilder::build(const Configuration::json_t& inf
   Region region;
   region.dim = it->second > 1 ? 4 : 3;
   region.dof = it->second;
-
   region.start = Vector4I(0);
   region.size = Vector4I(geom_nx, geom_ny, geom_nz, region.dof);
 
@@ -45,9 +44,8 @@ PetscErrorCode DistributionMomentBuilder::build(const Configuration::json_t& inf
   if (auto it = info.find("region"); it != info.end()) {
     parse_region_start_size(*it, region, particles + " " + moment);
     parse_res_dir_suffix(*it, suffix);
+    check_region(region, particles + " " + moment);
   }
-
-  check_region(region, particles + " " + moment);
 
   LOG("  {} diagnostic is added for {}, suffix: {}", moment, particles, suffix.empty() ? "<empty>" : suffix);
 
@@ -55,7 +53,7 @@ PetscErrorCode DistributionMomentBuilder::build(const Configuration::json_t& inf
     suffix = "_" + suffix;
 
   std::string res_dir =
-    CONFIG().out_dir + "/" + particles + "/" + moment + suffix;
+    CONFIG().out_dir + "/" + particles + "_" + moment + suffix;
 
   auto&& diagnostic = DistributionMoment::create( //
     res_dir, simulation_.get_named_particles(particles),

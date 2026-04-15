@@ -13,10 +13,10 @@ PetscErrorCode FieldViewBuilder::build(const Configuration::json_t& info)
 {
   PetscFunctionBeginUser;
   Region region;
-  region.start = Vector4I(0);
-  region.size = Vector4I(geom_nx, geom_ny, geom_nz, 3);
   region.dim = 4;
   region.dof = 3;
+  region.start = Vector4I(0);
+  region.size = Vector4I(geom_nx, geom_ny, geom_nz, 3);
 
   std::string field;
   info.at("field").get_to(field);
@@ -26,28 +26,24 @@ PetscErrorCode FieldViewBuilder::build(const Configuration::json_t& info)
   parse_field(info, da, f, region, field);
 
   std::string suffix;
-  region.start[3] = 0;
-  region.size[3] = 3;
 
   if (auto it = info.find("region"); it != info.end()) {
     parse_region_start_size(*it, region, field);
     parse_res_dir_suffix(*it, suffix);
+    check_region(region, field);
   }
-
-  check_region(region, field);
 
   LOG("  field view diagnostic is added for {}, suffix: {}", field, suffix.empty() ? "<empty>" : suffix);
 
   if (!suffix.empty())
     suffix = "_" + suffix;
 
+  /// @todo Maybe read the `res_dir` from the user instead of suffixes?
   std::string res_dir = CONFIG().out_dir + "/" + field + suffix;
 
-  auto&& diagnostic = FieldView::create(res_dir, da, f, region);
-  if (!diagnostic)
-    PetscFunctionReturn(PETSC_SUCCESS);
-
-  diagnostics_.emplace_back(std::move(diagnostic));
+  if (auto&& diagnostic = FieldView::create(res_dir, da, f, region)) {
+    diagnostics_.emplace_back(std::move(diagnostic));
+  }
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -79,6 +75,8 @@ void FieldViewBuilder::parse_field(const Configuration::json_t& info, DM& da,
   if (da == da_rho) {
     region.dim = 3;
     region.dof = 1;
+    region.start[3] = 0;
+    region.size[3] = 1;
   }
 }
 
