@@ -31,8 +31,7 @@ protected:
     const interfaces::Particles& particles, const Moment& moment,
     MPI_Comm newcomm);
 
-  PetscErrorCode set_data_views(const Region& region) override;
-  PetscErrorCode set_local_da(const Region& region);
+  PetscErrorCode set_data_views(const Region& reg) override;
 
   struct Shape;
   virtual PetscErrorCode collect();

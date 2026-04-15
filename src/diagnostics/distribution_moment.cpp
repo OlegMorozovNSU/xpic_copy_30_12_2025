@@ -34,6 +34,17 @@ DistributionMoment::DistributionMoment(const std::string& out_dir,
 {
 }
 
+PetscErrorCode DistributionMoment::set_data_views(const Region& reg)
+{
+  PetscFunctionBeginUser;
+  da_glob = da;
+  PetscCall(World::create_local_dm(da_glob, reg, comm, &da));
+  PetscCall(DMCreateGlobalVector(da, &field));
+  PetscCall(DMCreateLocalVector(da, &field_loc));
+  PetscCall(FieldView::set_data_views(reg));
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
 PetscErrorCode DistributionMoment::finalize()
 {
   PetscFunctionBeginUser;
@@ -41,17 +52,6 @@ PetscErrorCode DistributionMoment::finalize()
   PetscCall(VecDestroy(&field));
   PetscCall(VecDestroy(&field_loc));
   PetscCall(DMDestroy(&da));
-  PetscFunctionReturn(PETSC_SUCCESS);
-}
-
-PetscErrorCode DistributionMoment::set_data_views(const Region& region)
-{
-  PetscFunctionBeginUser;
-  da_glob = da;
-  PetscCall(World::create_local_dm(da_glob, region, comm, &da));
-  PetscCall(DMCreateGlobalVector(da, &field));
-  PetscCall(DMCreateLocalVector(da, &field_loc));
-  PetscCall(FieldView::set_data_views(region));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
