@@ -11,35 +11,30 @@ FieldViewZAvgBuilder::FieldViewZAvgBuilder(
 PetscErrorCode FieldViewZAvgBuilder::build(const Configuration::json_t& info)
 {
   PetscFunctionBeginUser;
-  Region region;
-  region.start = Vector4I(0);
-  region.size = Vector4I(geom_nx, geom_ny, 1, 3);
-  region.dim = 4;
-  region.dof = 3;
-
   std::string field;
   info.at("field").get_to(field);
 
+  std::string out_dir = CONFIG().out_dir + "/" + field + "_zavg";
+
   DM da;
   Vec f;
+  Region region;
+  region.dim = 4;
+  region.dof = 3;
+  region.start = Vector4I(0);
+  region.size = Vector4I(geom_nx, geom_ny, 1, 3);
+
   parse_field(info, da, f, region, field);
 
-  std::string suffix;
+  if (info.contains("region"))
+    parse_region(info.at("region"), region, field);
 
-  if (auto it = info.find("region"); it != info.end()) {
-    parse_region_start_size(*it, region, field);
-    parse_res_dir_suffix(*it, suffix);
-    check_region(region, field);
-  }
+  if (info.contains("out_dir"))
+    info.at("out_dir").get_to(out_dir);
 
-  LOG("  field view (zavg) diagnostic is added for {}, suffix: {}", field, suffix.empty() ? "<empty>" : suffix);
+  LOG("  field view (zavg) diagnostic is added for {}, output directory: {}", field, out_dir);
 
-  if (!suffix.empty())
-    suffix = "_" + suffix;
-
-  std::string res_dir = CONFIG().out_dir + "/" + field + "_zavg" + suffix;
-
-  if (auto&& diagnostic = FieldViewZAvg::create(res_dir, da, f, region)) {
+  if (auto&& diagnostic = FieldViewZAvg::create(out_dir, da, f, region)) {
     diagnostics_.emplace_back(std::move(diagnostic));
   }
   PetscFunctionReturn(PETSC_SUCCESS);
