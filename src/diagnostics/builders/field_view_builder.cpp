@@ -37,7 +37,7 @@ PetscErrorCode FieldViewBuilder::build(const Configuration::json_t& info)
   if (!suffix.empty())
     suffix = "_" + suffix;
 
-  std::string res_dir = CONFIG().out_dir + "/" + field + suffix + "/";
+  std::string res_dir = CONFIG().out_dir + "/" + field + suffix;
 
   auto&& diagnostic = FieldView::create(
     res_dir, simulation_.world.da, simulation_.get_named_vector(field), region);

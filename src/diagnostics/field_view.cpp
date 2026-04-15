@@ -51,7 +51,7 @@ PetscErrorCode FieldView::diagnose(PetscInt t)
   if (t % diagnose_period_ != 0)
     return PETSC_SUCCESS;
   PetscFunctionBeginUser;
-  PetscCall(open(comm, out_dir_ + "/" + format_time(t)));
+  PetscCall(open(out_dir_ + "/" + format_time(t)));
 
   const PetscReal* arr;
   PetscCall(VecGetArrayRead(field, &arr));
@@ -127,11 +127,9 @@ PetscErrorCode FieldView::create_subarray(PetscInt ndim, const PetscInt sizes[],
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
-PetscErrorCode FieldView::open(MPI_Comm comm, const std::string& filename)
+PetscErrorCode FieldView::open(const std::string& filename)
 {
   PetscFunctionBeginHot;
-  comm = comm;
-
   std::filesystem::path fname(filename);
 
   PetscInt rank;

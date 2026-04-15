@@ -30,7 +30,7 @@ protected:
   PetscErrorCode create_subarray(PetscInt ndim, const PetscInt sizes[],
     const PetscInt subsizes[], const PetscInt starts[], MPI_Datatype* type);
 
-  PetscErrorCode open(MPI_Comm comm, const std::string& filename);
+  PetscErrorCode open(const std::string& filename);
   PetscErrorCode flush();
   PetscErrorCode close();
   PetscErrorCode write(PetscInt size, const PetscReal* data);
