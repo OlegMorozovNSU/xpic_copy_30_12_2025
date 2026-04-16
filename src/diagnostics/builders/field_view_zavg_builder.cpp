@@ -14,7 +14,7 @@ PetscErrorCode FieldViewZAvgBuilder::build(const Configuration::json_t& info)
   std::string field;
   info.at("field").get_to(field);
 
-  std::string out_dir = CONFIG().out_dir + "/" + field + "_zavg";
+  std::string out_dir = field + "_zavg";
 
   DM da;
   Vec f;
@@ -34,7 +34,8 @@ PetscErrorCode FieldViewZAvgBuilder::build(const Configuration::json_t& info)
 
   LOG("  field view (zavg) diagnostic is added for {}, output directory: {}", field, out_dir);
 
-  if (auto&& diagnostic = FieldViewZAvg::create(out_dir, da, f, region)) {
+  if (auto&& diagnostic =
+        FieldViewZAvg::create(CONFIG().out_dir + "/" + out_dir, da, f, region)) {
     diagnostics_.emplace_back(std::move(diagnostic));
   }
   PetscFunctionReturn(PETSC_SUCCESS);

@@ -15,7 +15,7 @@ PetscErrorCode FieldViewBuilder::build(const Configuration::json_t& info)
   std::string field;
   info.at("field").get_to(field);
 
-  std::string out_dir = CONFIG().out_dir + "/" + field;
+  std::string out_dir = field;
 
   DM da;
   Vec f;
@@ -35,7 +35,8 @@ PetscErrorCode FieldViewBuilder::build(const Configuration::json_t& info)
 
   LOG("  field view diagnostic is added for {}, output directory: {}", field, out_dir);
 
-  if (auto&& diagnostic = FieldView::create(out_dir, da, f, region)) {
+  if (auto&& diagnostic =
+        FieldView::create(CONFIG().out_dir + "/" + out_dir, da, f, region)) {
     diagnostics_.emplace_back(std::move(diagnostic));
   }
   PetscFunctionReturn(PETSC_SUCCESS);

@@ -33,7 +33,7 @@ PetscErrorCode DistributionMomentBuilder::build(const Configuration::json_t& inf
     throw std::runtime_error(
       "Unknown moment name " + moment + " for particles " + particles);
 
-  std::string out_dir = CONFIG().out_dir + "/" + particles + "_" + moment;
+  std::string out_dir = particles + "/" + moment;
 
   Region region;
   region.dim = it->second > 1 ? 4 : 3;
@@ -49,8 +49,8 @@ PetscErrorCode DistributionMomentBuilder::build(const Configuration::json_t& inf
 
   LOG("  {} diagnostic is added for {}, output directory: {}", moment, particles, out_dir);
 
-  auto&& diagnostic = DistributionMoment::create( //
-    out_dir, simulation_.get_named_particles(particles),
+  auto&& diagnostic = DistributionMoment::create(
+    CONFIG().out_dir + "/" + out_dir, simulation_.get_named_particles(particles),
     moment_from_string(moment), region);
 
   if (!diagnostic)
