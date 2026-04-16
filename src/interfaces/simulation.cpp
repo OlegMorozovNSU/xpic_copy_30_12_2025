@@ -56,6 +56,8 @@ PetscErrorCode Simulation::initialize()
   PetscCall(DMCreateGlobalVector(da, &B));
   PetscCall(DMCreateGlobalVector(da, &B0));
   PetscCall(DMCreateGlobalVector(da, &J));
+  PetscCall(DMCreateGlobalVector(da, &rE));
+  PetscCall(DMCreateGlobalVector(da, &rB));
   PetscCall(DMCreateLocalVector(da, &E_loc));
   PetscCall(DMCreateLocalVector(da, &B_loc));
   PetscCall(DMCreateLocalVector(da, &J_loc));
@@ -77,6 +79,8 @@ PetscErrorCode Simulation::initialize()
   PetscCall(MatProductSetFromOptions(matM));
   PetscCall(MatProductSymbolic(matM));
   PetscCall(MatProductNumeric(matM));
+  PetscCall(MatScale(matM, 0.25 * dt * dt));
+  PetscCall(MatShift(matM, 1.0));
 
   Divergence divergence(da);
   PetscCall(divergence.create_negative(&divE));
@@ -170,6 +174,8 @@ PetscErrorCode Simulation::finalize()
   PetscCall(VecDestroy(&E_loc));
   PetscCall(VecDestroy(&B_loc));
   PetscCall(VecDestroy(&J_loc));
+  PetscCall(VecDestroy(&rE));
+  PetscCall(VecDestroy(&rB));
 
   PetscCall(MatDestroy(&rotE));
   PetscCall(MatDestroy(&rotB));

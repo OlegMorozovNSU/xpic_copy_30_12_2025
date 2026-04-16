@@ -30,6 +30,9 @@ public:
    * 1) `MatSetPreallocationCOO()`/`MatSetValuesCOO()` technique is utilized;
    * 2) Control of matrix indices assembly is added (to avoid reallocation);
    * 3) Parallel-traversable buffers are used to fill indices and values.
+   *
+   * @todo Check whether its faster to use `Vec` + `MATOP_MULT` for this.
+   * @todo The only problem with storing matrix is vector is remapping between local and global
    */
   Mat matL;
   Mat matA;

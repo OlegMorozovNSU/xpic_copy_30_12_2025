@@ -8,10 +8,6 @@ namespace basic {
 PetscErrorCode Simulation::initialize_implementation()
 {
   PetscFunctionBeginUser;
-  // For the reasoning see `timestep_implementation()`
-  PetscCall(MatScale(rotE, -(0.5 * dt)));
-  PetscCall(MatScale(rotB, +(1.0 * dt)));
-
   PetscCall(init_particles(*this, particles_));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
@@ -35,11 +31,9 @@ PetscErrorCode Simulation::push_particles()
 {
   PetscFunctionBeginUser;
   PetscCall(VecAXPY(B, -1.0, B0));
-  PetscCall(MatMultAdd(rotE, E, B, B));
+  PetscCall(MatMult(rotE, E, rE));
+  PetscCall(VecAXPY(B, -0.5 * dt, rE));
   PetscCall(VecAXPY(B, +1.0, B0));
-
-  if (particles_.empty())
-    return PETSC_SUCCESS;
 
   PetscCall(DMGlobalToLocal(da, E, INSERT_VALUES, E_loc));
   PetscCall(DMGlobalToLocal(da, B, INSERT_VALUES, B_loc));
@@ -70,8 +64,10 @@ PetscErrorCode Simulation::push_fields()
   PetscCall(VecCopy(E, util));
   PetscCall(VecAXPY(B, -1.0, B0));
 
-  PetscCall(MatMultAdd(rotE, E, B, B));
-  PetscCall(MatMultAdd(rotB, B, E, E));
+  PetscCall(MatMult(rotE, E, rE));
+  PetscCall(MatMult(rotB, E, rB));
+  PetscCall(VecAXPY(B, -0.5 * dt, rE));
+  PetscCall(VecAXPY(E, +1.0 * dt, rB));
   PetscCall(VecAXPY(E, -dt, J));
 
   PetscCall(VecAXPY(B, +1.0, B0));

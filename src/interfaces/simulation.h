@@ -47,8 +47,11 @@ public:
 
   Mat rotE;
   Mat rotB;
-  Mat matM; // (rotB * rotE)
+  Mat matM; // (I + (0.25 * dt * dt) rotB * rotE)
   Mat divE;
+
+  // Utility vectors (e.g. to store rotE * E)
+  Vec rE, rB;
 
   /**
    * @brief Container of abstract particles, the down-casted pointers to this

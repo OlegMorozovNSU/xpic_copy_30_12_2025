@@ -109,7 +109,6 @@ PetscErrorCode Simulation::init_vectors()
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
-// Both `predict` and `correct` use the same constant `matM` as a preconditioner
 PetscErrorCode Simulation::init_ksp_solvers()
 {
   PetscFunctionBeginUser;

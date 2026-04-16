@@ -244,8 +244,9 @@ PetscErrorCode Simulation::final_update()
   PetscCall(clock.push("final_update1"));
   PetscCall(PetscLogStagePush(stagenums[5]));
 
-  PetscCall(VecAXPBY(E, 2, -1, Ep));  // E^{n+1} = 2 * E^{n+1/2} - E^{n}
-  PetscCall(MatMultAdd(rotE, Ep, B, B));  // B^{n+1} -= dt * rot(E^{n+1/2})
+  PetscCall(VecAXPBY(E, 2, -1, Ep));
+  PetscCall(MatMult(rotE, Ep, rE));
+  PetscCall(VecAXPY(B, -dt, rE));
 
   PetscCall(PetscLogStagePop());
   PetscCall(clock.pop());
@@ -255,19 +256,15 @@ PetscErrorCode Simulation::final_update()
 PetscErrorCode Simulation::advance_fields(KSP ksp, Vec curr, Vec out)
 {
   PetscFunctionBeginUser;
-  Vec rhs;
-  PetscCall(DMGetGlobalVector(da, &rhs));
   PetscCall(VecAXPY(B, -1, B0));
-
-  PetscCall(VecCopy(curr, rhs));
-  PetscCall(VecAXPBY(rhs, 2, -dt, E));  // rhs = 2 * E^{n} - dt * rhs
-  PetscCall(MatMultAdd(rotB, B, rhs, rhs));  // rhs = rhs + dt * rotB(B^{n})
-
-  PetscCall(KSPSolve(ksp, rhs, out));
-  PetscCall(KSPGetSolution(ksp, &out));
-
+  PetscCall(MatMult(rotB, B, rB));
+  PetscCall(VecCopy(E, rE));
+  PetscCall(VecAXPY(rE, -0.5 * dt, curr));
+  PetscCall(VecAXPY(rE, +0.5 * dt, rB));
   PetscCall(VecAXPY(B, +1, B0));
-  PetscCall(DMRestoreGlobalVector(da, &rhs));
+
+  PetscCall(KSPSolve(ksp, rE, out));
+  PetscCall(KSPGetSolution(ksp, &out));
 
   // Convergence analysis
   const char* name;
@@ -548,12 +545,6 @@ PetscErrorCode Simulation::init_matrices()
   PetscFunctionBeginUser;
   PetscCall(DMCreateMatrix(da, &matL));
   PetscCall(MatSetOption(matL, MAT_NEW_NONZERO_LOCATIONS, PETSC_TRUE));
-
-  PetscCall(MatScale(matM, 0.5 * dt * dt));
-  PetscCall(MatShift(matM, 2.0));
-
-  PetscCall(MatScale(rotE, -dt));
-  PetscCall(MatScale(rotB, +dt));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
