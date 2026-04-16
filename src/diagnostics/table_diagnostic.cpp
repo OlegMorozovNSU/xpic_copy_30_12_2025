@@ -1,8 +1,8 @@
 #include "table_diagnostic.h"
 
 TableDiagnostic::TableDiagnostic(const std::string& filename)
-  : file(filename)
 {
+  PetscCallAbort(PETSC_COMM_WORLD, open(filename));
 }
 
 PetscErrorCode TableDiagnostic::diagnose(PetscInt t)
@@ -91,8 +91,8 @@ PetscErrorCode TableDiagnostic::close()
 
   PetscFunctionBeginHot;
   if (file.is_open()) {
-    PetscCallCXX(flush());
-    PetscCallCXX(close());
+    PetscCallCXX(file.flush());
+    PetscCallCXX(file.close());
   }
   PetscFunctionReturn(PETSC_SUCCESS);
 }
