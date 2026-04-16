@@ -6,7 +6,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "../../"))
 from lib.common import *
 from configuration import *
 
-# @todo move this into a `lib.common`, or even into `lib.plot``
+# @todo simplify this to some building blocks, not to the small-to-write leviathan
+# @todo simply remove the `configuration.py` to avoid the dependance on configs
 
 def gen_view(path: str, plane: str, comp: int, dof: int, coords):
     view = FieldView()
