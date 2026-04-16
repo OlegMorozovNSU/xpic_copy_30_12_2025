@@ -13,8 +13,9 @@ class Particles : public interfaces::Particles {
 public:
   Particles(Simulation& simulation, const SortParameters& parameters);
 
-  PetscErrorCode clear_sources();
   PetscErrorCode prepare_storage();
+
+  PetscErrorCode form_prediction(PetscReal**** I_arr, PetscReal**** L_arr);
   PetscErrorCode form_iteration();
 
   PetscReal get_average_iteration_number() const;
@@ -25,14 +26,14 @@ protected:
   static constexpr const auto& shape_func = spline_of_2nd_order;
   static constexpr const auto& shape_radius = 1.5;
 
-  /// @note We should iterate the `Point` ~ (x^{n+1,k}, v^{n+1,k}) from _previous_
-  /// timestep, meaning that we have to store copy of `Particles::storage`.
+  // We should iterate the `Point` ~ (x^{n+1,k}, v^{n+1,k}) from _previous_
+  // timestep, meaning that we have to store copy of `Particles::storage`.
   std::vector<std::vector<Point>> previous_storage;
 
   PetscInt size = 0;
   PetscReal avgit = 0;
   PetscReal avgcell = 0;
-  PetscInt  maxcell = 0;
+  PetscInt maxcell = 0;
 
   Simulation& simulation_;
 };

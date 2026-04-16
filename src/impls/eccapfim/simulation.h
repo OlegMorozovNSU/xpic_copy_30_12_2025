@@ -8,9 +8,12 @@
 #include "src/impls/eccapfim/particles.h"
 #include "src/utils/sync_clock.h"
 
+/// @todo Try to produce more information about crashes, see `PetscUnlikely`
+
 namespace eccapfim {
 
 #define SNES_ITERATE_B 0
+#define SNES_PRECONDITIONING 1
 
 static constexpr PetscReal atol = 1e-7;
 static constexpr PetscReal rtol = 1e-7;
@@ -31,7 +34,7 @@ public:
 
   std::vector<std::shared_ptr<Particles>> particles_;
 
-protected:
+private:
   PetscErrorCode initialize_implementation() override;
   PetscErrorCode timestep_implementation(PetscInt t) override;
 
@@ -43,38 +46,59 @@ protected:
   PetscErrorCode calc_iteration();
   PetscErrorCode after_iteration();
 
+  static PetscErrorCode form_prediction(SNES npc, Vec x);
+  PetscErrorCode impl_form_prediction(Vec vx);
+
   /**
    * @brief Evaluates nonlinear function F(x^k), namely the system of
-   * Maxwell's equations on E^{n+1/2,k}, B^{n+1/2,k}. In fact, this is
-   * a main "computational step".
+   * Maxwell's equations on E^{n+1/2,k}, B^{n+1/2,k}. This is a main
+   * computational step.
    *
    * @param[in]  snes the SNES context.
-   * @param[in]  vx   input vector of (E^{n+1/2}, B^{n+1/2}) on k-th iteration.
+   * @param[in]  x    input vector of (E^{n+1/2}, B^{n+1/2}) on k-th iteration.
    * @param[in]  ctx  user context, we pass `this` i.e. `Simulation*`.
-   * @param[out] vf   function to be evaluated, system of Maxwell's equations.
+   * @param[out] f    function to be evaluated, system of Maxwell's equations.
    */
-  static PetscErrorCode form_iteration(SNES snes, Vec vx, Vec vf, void* ctx);
+  static PetscErrorCode form_iteration(SNES snes, Vec x, Vec f, void* ctx);
+  PetscErrorCode impl_form_iteration(Vec x, Vec f);
 
-  // The main simulation steps
+  static PetscErrorCode mat_mult(Mat mat, Vec x, Vec y);
+  PetscErrorCode impl_mat_mult(Vec x, Vec y);
+
   PetscErrorCode clear_sources();
   PetscErrorCode form_current();
-  PetscErrorCode form_function(Vec vf);
+  PetscErrorCode form_function(Vec f);
 
-#if SNES_ITERATE_B
-  DM da_EB;
-  Vec B_hk;
-  PetscErrorCode from_snes(Vec v, Vec vE, Vec vB);
-  PetscErrorCode to_snes(Vec vE, Vec vB, Vec v);
-#endif
+  PetscErrorCode comp_snes(Vec vE, Vec vB, Vec v);
+  PetscErrorCode decomp_snes(Vec vE, Vec vB, Vec v);
 
-  Vec E_hk;
-
-  Vec sol;
+  // `da` can be extended, if we iterate magnetic and electric field together
   SNES snes;
+  DM sda;
+  Vec sol;
+  Vec E_hk;
+  Vec B_hk;
+
+  // Simplified matrix storage, used for preconditioning if needed
+  SNES npc;
+  KSP ksp;
+  DM nda;
+  Vec nsol;
+
+  Vec I;
+  Vec I_loc;
+  PetscReal**** I_arr;
+
+  Vec nLv;
+  Vec nLv_loc;
+  PetscReal**** nLv_arr;
+
+  Mat nLm;
+
   std::vector<PetscReal> conv_hist;
 
   PetscClassId classid;
-  PetscLogEvent events[5];
+  PetscLogEvent events[7];
   PetscLogStage stagenums[4];
 
   SyncClock clock;

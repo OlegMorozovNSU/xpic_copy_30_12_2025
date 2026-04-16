@@ -29,6 +29,71 @@ PetscInt Particles::get_maximum_number_of_traversed_cells() const
 }
 
 
+PetscErrorCode Particles::form_prediction(PetscReal**** I_arr, PetscReal**** L_arr)
+{
+  PetscFunctionBeginUser;
+  PetscReal q = parameters.q;
+  PetscReal m = parameters.m;
+  PetscReal mpw = parameters.n / (PetscReal)parameters.Np;
+
+// #pragma omp parallel for
+  for (PetscInt g = 0; g < world.size.elements_product(); ++g) {
+    if (storage[g].empty())
+      continue;
+
+    PetscInt x, y, z;
+    x = world.start[X] + g % world.size[X];
+    y = world.start[Y] + (g / world.size[X]) % world.size[Y];
+    z = world.start[Z] + (g / world.size[X]) / world.size[Y];
+
+    Vector3R b = B_arr[z][y][x] * ((0.5 * dt) * q / m);
+    PetscInt Ng = storage[g].size();
+    PetscReal A_p = 0.25 * dt * dt * mpw * Ng * q * q / m / (1 + b.squared());
+
+    PetscReal matB[3][3]{
+      {1.0 + b[X] * b[X], +b[Z] + b[X] * b[Y], -b[Y] + b[X] * b[Z]},
+      {-b[Z] + b[Y] * b[X], 1.0 + b[Y] * b[Y], +b[X] + b[Y] * b[Z]},
+      {+b[Y] + b[Z] * b[X], -b[X] + b[Z] * b[Y], 1.0 + b[Z] * b[Z]},
+    };
+
+    PetscReal* I_v = I_arr[z][y][x];
+    PetscReal* L_v = L_arr[z][y][x];
+
+    PetscInt c1, c2, in, jn, kn, is, js, ks;
+    PetscReal xn, yn, zn, xs, ys, zs;
+
+    for (c1 = 0; c1 < 3; c1++) {
+      for (c2 = 0; c2 < 3; c2++)
+        L_v[c1 * 3 + c2] += A_p * matB[c1][c2];
+    }
+
+    for (const auto& [r, v] : storage[g]) {
+      Vector3R I_p =
+        q * mpw / (1. + b.squared()) * (v + v.cross(b) + v.dot(b) * b);
+
+      xn = r[X] / dx;
+      yn = r[Y] / dy;
+      zn = r[Z] / dz;
+      xs = xn - 0.5;
+      ys = yn - 0.5;
+      zs = zn - 0.5;
+
+      in = (PetscInt)floor(xn);
+      jn = (PetscInt)floor(yn);
+      kn = (PetscInt)floor(zn);
+      is = (PetscInt)floor(xs);
+      js = (PetscInt)floor(ys);
+      ks = (PetscInt)floor(zs);
+
+      I_v[X] += I_p[X];
+      I_v[Y] += I_p[Y];
+      I_v[Z] += I_p[Z];
+    }
+  }
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+
 PetscErrorCode Particles::form_iteration()
 {
   PetscFunctionBeginUser;
@@ -73,6 +138,7 @@ PetscErrorCode Particles::form_iteration()
     return false;
   };
 
+  /// @todo(2) Measure the time to interpolate / push / decompose separately
 #pragma omp parallel for reduction(+ : avgit, avgcell), reduction(max : maxcell)
   for (PetscInt g = 0; g < (PetscInt)storage.size(); ++g) {
     ImplicitEsirkepov util(E_arr, B_arr, J_arr);
@@ -99,8 +165,8 @@ PetscErrorCode Particles::form_iteration()
         const PetscReal alpha = 0.5 * dtau * (q / m);
 
         const PetscInt cn_maxit = 30;
-        const PetscReal cn_atol = 0.5 * eccapfim::atol;
-        const PetscReal cn_rtol = 0.5 * eccapfim::atol;
+        const PetscReal cn_atol = 0.5 * atol;
+        const PetscReal cn_rtol = 0.5 * atol;
 
         PetscInt it = 0, s;
         PetscReal rn, r0, d, ds, bs;
@@ -191,14 +257,6 @@ PetscErrorCode Particles::form_iteration()
 
   avgit /= (PetscReal)size;
   avgcell /= (PetscReal)size;
-  PetscFunctionReturn(PETSC_SUCCESS);
-}
-
-PetscErrorCode Particles::clear_sources()
-{
-  PetscFunctionBeginUser;
-  PetscCall(VecSet(J, 0.0));
-  PetscCall(VecSet(J_loc, 0.0));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
