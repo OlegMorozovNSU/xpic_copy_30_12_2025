@@ -64,6 +64,8 @@ Builder::Builder(Simulation& simulation)
     return geom_y;
   if (str == "geom_z" || str == "geom_nz")
     return geom_z;
+  if (str == "geom_t" || str == "geom_nt")
+    return geom_t;
 
   if (str.ends_with(" [dx]"))
     return std::stod(str.substr(0, str.size() - 5)) * dx;
