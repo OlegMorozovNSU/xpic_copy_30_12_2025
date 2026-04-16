@@ -34,6 +34,8 @@ private:
 
   PetscInt injection_start_;
   PetscInt injection_end_;
+
+  /// @todo Number of injected particles can vary, if `MPI_Comm_size() > 1`
   PetscInt per_step_particles_num_;
 
   CoordinateGenerator generate_coordinate_;

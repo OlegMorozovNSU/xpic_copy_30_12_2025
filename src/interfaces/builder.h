@@ -21,6 +21,7 @@ public:
     interfaces::Simulation& simulation, Container& result)
   {
     PetscFunctionBeginUser;
+    /// @todo The error handling of config input is an absolute garbage, this should be figured out
     auto&& builder = std::make_unique<InheritedBuilder>(simulation, result);
     try {
       PetscCall(builder->build(info));
