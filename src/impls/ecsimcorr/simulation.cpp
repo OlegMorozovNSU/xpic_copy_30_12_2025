@@ -1,6 +1,5 @@
 #include "simulation.h"
 
-#include "src/impls/ecsimcorr/energy_conservation.h"
 #include "src/utils/geometries.h"
 #include "src/utils/operators.h"
 #include "src/utils/utils.h"
@@ -15,7 +14,7 @@ PetscErrorCode Simulation::initialize_implementation()
 
   J = currJe;
 
-  diagnostics_.emplace_back(std::make_unique<EnergyConservation>(*this));
+  diagnostics_.emplace_back(std::make_unique<ecsimcorr::Energy>(*this));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -24,7 +23,7 @@ PetscErrorCode Simulation::timestep_implementation(PetscInt /* t */)
   PetscFunctionBeginUser;
   PetscCall(clear_sources());
   PetscCall(first_push());
-  PetscCall(predict_fields());
+  PetscCall(advance_fields());
   PetscCall(second_push());
   PetscCall(correct_fields());
   PetscCall(final_update());
@@ -43,24 +42,6 @@ PetscErrorCode Simulation::clear_sources()
 
   for (auto& sort : particles_)
     PetscCall(sort->calculate_energy());
-
-  PetscCall(PetscLogStagePop());
-  PetscCall(clock.pop());
-  PetscFunctionReturn(PETSC_SUCCESS);
-}
-
-// Solving Maxwell's equations to find predicted field `Ep` = E'^{n+1/2}
-PetscErrorCode Simulation::predict_fields()
-{
-  PetscFunctionBeginUser;
-  PetscCall(clock.push(__FUNCTION__));
-  PetscCall(PetscLogStagePush(stagenums[3]));
-
-  // Storing `matL` to reuse it for ECSIM current calculation later
-  Mat matA;
-  PetscCall(MatDuplicate(matL, MAT_COPY_VALUES, &matA));
-  PetscCall(ecsim::Simulation::advance_fields(matA));
-  PetscCall(MatDestroy(&matA));
 
   PetscCall(PetscLogStagePop());
   PetscCall(clock.pop());
@@ -92,12 +73,12 @@ PetscErrorCode Simulation::final_update()
 
   Vec util;
   PetscReal norm;
-  PetscCall(DMGetGlobalVector(world.da, &util));
+  PetscCall(DMGetGlobalVector(da, &util));
 
   PetscCall(MatMultAdd(matL, Ec, currI, currI));  // currI = currI + matL * E^{n+1/2}
   PetscCall(VecWAXPY(util, -1, currI, currJe));  // util = -currI + currJe
   PetscCall(VecNorm(util, NORM_2, &norm));
-  PetscCall(DMRestoreGlobalVector(world.da, &util));
+  PetscCall(DMRestoreGlobalVector(da, &util));
   LOG("  Norm of the difference in ECSIM and Esirkepov currents: {:.7f}", norm);
 
   PetscCall(VecSwap(Ep, Ec));
@@ -122,14 +103,12 @@ PetscErrorCode Simulation::init_particles()
 PetscErrorCode Simulation::init_vectors()
 {
   PetscFunctionBeginUser;
-  DM da = world.da;
   PetscCall(ecsim::Simulation::init_vectors());
   PetscCall(DMCreateGlobalVector(da, &Ec));
   PetscCall(DMCreateGlobalVector(da, &currJe));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
-// Both `predict` and `correct` use the same constant `matM` as a preconditioner
 PetscErrorCode Simulation::init_ksp_solvers()
 {
   PetscFunctionBeginUser;
@@ -138,14 +117,16 @@ PetscErrorCode Simulation::init_ksp_solvers()
     {"correct", correct},
   };
 
+  conv_hist.resize(maxit);
+
   for (auto&& [name, ksp] : map) {
     PetscCall(KSPCreate(PETSC_COMM_WORLD, &ksp));
     PetscCall(PetscObjectSetName((PetscObject)ksp, name.c_str()));
     PetscCall(KSPSetOptionsPrefix(ksp, (name + "_").c_str()));
 
     PetscCall(KSPSetErrorIfNotConverged(ksp, PETSC_TRUE));
-    PetscCall(KSPSetReusePreconditioner(ksp, PETSC_TRUE));
-    PetscCall(KSPSetTolerances(ksp, ecsim::rtol, ecsim::atol, PETSC_DEFAULT, PETSC_DEFAULT));
+    PetscCall(KSPSetTolerances(ksp, rtol, atol, divtol, maxit));
+    PetscCall(KSPSetResidualHistory(ksp, conv_hist.data(), maxit, PETSC_TRUE));
     PetscCall(KSPSetFromOptions(ksp));
   }
 
@@ -175,7 +156,41 @@ PetscErrorCode Simulation::finalize()
   PetscCall(ecsim::Simulation::finalize());
   PetscCall(KSPDestroy(&correct));
   PetscCall(VecDestroy(&Ec));
-  PetscCall(VecDestroy(&currJe));
+  PetscCall(VecDestroy(&currI));
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+
+Energy::Energy(const ecsimcorr::Simulation& simulation)
+  : ::Energy(simulation)
+{
+}
+
+PetscErrorCode Energy::fill_energy_cons(PetscInt t)
+{
+  PetscFunctionBeginUser;
+  PetscCall(::Energy::fill_energy_cons(t));
+
+  PetscInt off = 3;
+  for (const auto& sort : simulation.particles_) {
+    auto* particles = dynamic_cast<ecsimcorr::Particles*>(sort.get());
+    auto&& name = sort->parameters.sort_name;
+    auto&& cwd = particles->lambda_dK;
+    auto&& pwd = particles->pred_dK - dt * particles->pred_w;
+    auto&& ldk = particles->corr_dK - dt * particles->corr_w;
+    energy_cons.add(13, "CWD_" + name, "{: .6e}", cwd, ++off);
+    energy_cons.add(13, "PWD_" + name, "{: .6e}", pwd, ++off);
+    energy_cons.add(13, "LdK_" + name, "{: .6e}", ldk, ++off);
+    ++off;
+  }
+
+  /// @note Esirkepov current finally created electric field, so its work should be used
+  PetscReal corr_w = 0.0;
+  for (const auto& sort : simulation.particles_) {
+    corr_w += dynamic_cast<ecsimcorr::Particles*>(sort.get())->corr_w;
+  }
+
+  energy_cons.add(13, "WD", "{: .6e}", dK - dt * corr_w);
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

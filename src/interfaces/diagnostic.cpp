@@ -20,8 +20,8 @@ Diagnostic::Diagnostic(const std::string& out_dir, PetscInt diagnose_period)
 
 /* static */ std::string Diagnostic::format_time(PetscInt t)
 {
-  auto time_width = (PetscInt)std::to_string(geom_nt).size();
-  return std::format("{:0{}d}", t, time_width);
+  auto time_width = 4 /* (PetscInt)std::to_string(geom_nt).size() */;
+  return std::format("{:0{}d}", t / diagnose_period_, time_width);
 }
 
 }  // namespace interfaces

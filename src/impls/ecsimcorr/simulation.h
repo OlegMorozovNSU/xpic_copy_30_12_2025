@@ -1,6 +1,7 @@
 #ifndef SRC_ECSIMCORR_SIMULATION_H
 #define SRC_ECSIMCORR_SIMULATION_H
 
+#include "src/diagnostics/energy.h"
 #include "src/impls/ecsim/simulation.h"
 #include "src/impls/ecsimcorr/particles.h"
 #include "src/utils/sync_clock.h"
@@ -28,7 +29,6 @@ private:
 
   // The main simulation steps
   PetscErrorCode clear_sources();
-  PetscErrorCode predict_fields();
   PetscErrorCode correct_fields();
   PetscErrorCode final_update();
 
@@ -36,8 +36,12 @@ private:
   KSP correct;
 
   PetscLogStage stagenums[7];
+};
 
-  friend class EnergyConservation;
+class Energy : public ::Energy {
+public:
+  Energy(const ecsimcorr::Simulation& simulation);
+  PetscErrorCode fill_energy_cons(PetscInt t) override;
 };
 
 }  // namespace ecsimcorr

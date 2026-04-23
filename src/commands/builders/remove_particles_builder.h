@@ -16,7 +16,7 @@ public:
     std::string_view help =
       "\nStructure of the RemoveParticles command description:\n"
       "{\n"
-      "  \"command\": \"SetParticles\", -- Name of the command, constant\n"
+      "  \"command\": \"RemoveParticles\", -- Name of the command, constant\n"
       "  \"particles\": \"p\", -- Particles name from \"Particles\" section\n"
       "  \"geometry\": {}, -- Description of the area, where 'p' will be lost\n"
       "}";

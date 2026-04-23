@@ -12,7 +12,6 @@ class Simulation;
 class Particles : public interfaces::Particles {
 public:
   Particles(Simulation& simulation, const SortParameters& parameters);
-  PetscErrorCode finalize() override;
 
   virtual PetscErrorCode clear_sources();
   virtual PetscErrorCode first_push();
@@ -31,6 +30,10 @@ protected:
   void decompose_ecsim_current(const Point& point, PetscReal* coo_v);
 
   Simulation& simulation_;
+
+private:
+  PetscClassId classid;
+  PetscLogEvent events[2];
 };
 
 }  // namespace ecsim

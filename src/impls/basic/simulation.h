@@ -9,7 +9,6 @@ namespace basic {
 class Simulation final : public interfaces::Simulation {
 public:
   Simulation() = default;
-  PetscErrorCode finalize() override;
 
   std::vector<std::shared_ptr<Particles>> particles_;
 

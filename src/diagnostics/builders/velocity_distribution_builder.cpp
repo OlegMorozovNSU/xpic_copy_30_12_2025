@@ -25,7 +25,7 @@ PetscErrorCode VelocityDistributionBuilder::build(
   geometry.at("name").get_to(name);
 
   Tester test;
-  FieldView::Region xreg_aabb;
+  Region xreg_aabb;
   xreg_aabb.dim = 2;
   xreg_aabb.dof = 1;
 
@@ -98,7 +98,6 @@ PetscErrorCode VelocityDistributionBuilder::build(
     vreg.vy_min = (*it)[1];
   }
 
-  /// @todo How to name things without a logical conflicts for different geometries/parameters?
   LOG("  {} velocity distribution diagnostic is added for {}", projector, particles);
 
   std::string res_dir = CONFIG().out_dir + "/" + particles + "/" + projector;

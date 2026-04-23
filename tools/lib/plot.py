@@ -5,9 +5,9 @@ from typing import Any
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # Font sizes
-titlesize = 36
-labelsize = 34
-ticksize  = 30
+titlesize = 24
+labelsize = 22
+ticksize  = 18
 
 # Utilities to set font sizes externally
 def set_titlesize(new_titlesize):
@@ -73,6 +73,10 @@ class PlotAxisInfo:
         ax = self.axis
         ax.tick_params(labelsize=ticksize, pad=8)
 
+        # TODO: Try to understand how to:
+        # 1) Set these parameters common to each plot
+        # 2) Modify them separatey for each plot
+
         for name, arg in self.args.items():
             if name == "title":
                 ax.set_title(arg, fontsize=titlesize, pad=0, y=1.05)
@@ -89,50 +93,25 @@ class PlotAxisInfo:
                 ax.set(**{name: arg})
 
 class PlotIm:
-    def __init__(
-        self,
-        view: FieldView,
-        vmap: tuple[float] = (None, None),
-        cmap: str = "plasma",
-        bounds: tuple[float] = None,
-        axis: plt.Axes = None):
-
-        self.view: FieldView = view
-        self.data: np.ndarray[np.float32] = None
-        self.bounds: tuple[float] = bounds
-
-        self.axis: plt.Axes = axis
-        self.info = PlotAxisInfo(axis)
-
-        self.im: plt.AxesImage = None
-        self.cbar: plt.Colorbar = None
-
-        self.vmin: float = vmap[0]
-        self.vmax: float = vmap[1]
-        self.cmap: plt.Colormap = cmap
-
-    def set_axis(self, axis: plt.Axes):
+    def __init__(self, axis = None, vmap = (None, None), cmap = "plasma", bounds = None):
+        self.data = None
+        self.bounds = bounds
         self.axis = axis
-        self.info.axis = axis
+        self.info = PlotAxisInfo(axis)
+        self.im = None
+        self.cbar = None
+        self.vmin = vmap[0]
+        self.vmax = vmap[1]
+        self.cmap = cmap
 
     def draw(self, **kwargs):
-        self.axis.set_aspect(1.0)
-
-        if self.bounds == None:
-            self.bounds = (0, self.data.shape[1], 0, self.data.shape[0])
-
         self.im = self.axis.imshow(
             self.data,
             cmap=self.cmap,
             interpolation="gaussian",
             origin="lower",
             aspect="auto",
-            extent=(
-                self.bounds[0],
-                self.bounds[1],
-                self.bounds[2],
-                self.bounds[3],
-            ),
+            extent=self.bounds,
             vmin=self.vmin,
             vmax=self.vmax,
         )
@@ -184,44 +163,19 @@ class PlotIm:
         yax.get_offset_text().set_size(0.82 * ticksize)
 
     def clear(self):
-        self.axis.cla()
+        self.axis.clear()
 
 class PlotLinear:
-    def __init__(
-        self,
-        vmap: tuple[float] = None,
-        axis: plt.Axes = None):
-
-        self.data: np.ndarray[np.float32] = None
-
-        self.axis: plt.Axes = axis
-        self.plot: plt.Line2D = None
-
-        self.info = PlotAxisInfo(axis)
-
-        if vmap != None:
-            self.info.args["ylim"] = vmap
-            self.info.args["yticks"] = np.linspace(vmap[0], vmap[1], 5)
-
-        self.plot_info: dict[str, Any] = {}
-
-    def set_axis(self, axis: plt.Axes):
+    def __init__(self, axis = None, vmap = None):
         self.axis = axis
-        self.info.axis = axis
-
-    def draw(self, x):
-        self.plot = self.axis.plot(x, self.data, **self.plot_info)
-        self.draw_info()
+        self.info = PlotAxisInfo(axis)
 
     def draw_info(self):
         self.info.draw()
-
-        if "label" in self.plot_info:
-            self.axis.legend()
 
         yax = self.axis.yaxis
         yax.OFFSETTEXTPAD = 8
         yax.get_offset_text().set_size(0.82 * ticksize)
 
     def clear(self):
-        self.axis.cla()
+        self.axis.clear()

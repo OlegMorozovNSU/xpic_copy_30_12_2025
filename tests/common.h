@@ -1,6 +1,6 @@
 #include "src/pch.h"
 #include "src/interfaces/point.h"
-#include "src/diagnostics/utils/table_diagnostic.h"
+#include "src/diagnostics/table_diagnostic.h"
 
 /// @todo There would be probably lots of utilities, they should be placed to some static library
 

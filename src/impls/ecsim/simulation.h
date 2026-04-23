@@ -12,9 +12,6 @@ Vector3R interpolate_B_s1(Arr B_g, const Vector3R& coord);
 
 namespace ecsim {
 
-static constexpr PetscReal atol = 1e-7;
-static constexpr PetscReal rtol = 1e-7;
-
 /// @note The following is a recreation of the published results,
 /// @see https://doi.org/10.1016/j.jcp.2017.01.002
 class Simulation : public interfaces::Simulation {
@@ -33,12 +30,19 @@ public:
    * 1) `MatSetPreallocationCOO()`/`MatSetValuesCOO()` technique is utilized;
    * 2) Control of matrix indices assembly is added (to avoid reallocation);
    * 3) Parallel-traversable buffers are used to fill indices and values.
+   *
+   * @todo Check whether its faster to use `Vec` + `MATOP_MULT` for this.
+   * @todo The only problem with storing matrix is vector is remapping between local and global
    */
   Mat matL;
+  Mat matA;
 
   std::vector<std::shared_ptr<Particles>> particles_;
 
   void get_array_offset(PetscInt begin_g, PetscInt end_g, PetscInt& off);
+
+  PetscErrorCode set_tolerances(
+    PetscReal atol, PetscReal rtol, PetscReal divtol, PetscInt maxit);
 
 protected:
   PetscErrorCode initialize_implementation() override;
@@ -53,18 +57,22 @@ protected:
   // The main simulation steps
   PetscErrorCode clear_sources();
   PetscErrorCode first_push();
-  PetscErrorCode fill_ecsim_current();
-  PetscErrorCode advance_fields(Mat matA);
+  PetscErrorCode advance_fields();
   PetscErrorCode second_push();
   PetscErrorCode final_update();
 
-  PetscErrorCode update_cells_with_assembly();
   PetscErrorCode advance_fields(KSP ksp, Vec curr, Vec out);
+  PetscErrorCode update_cells_with_assembly();
+  PetscErrorCode fill_ecsim_current();
 
   PetscErrorCode fill_matrix_indices(PetscInt* coo_i, PetscInt* coo_j);
   PetscErrorCode fill_ecsim_current(PetscReal* coo_v);
 
-  Mat matM;
+  PetscReal atol = 1e-7;
+  PetscReal rtol = 1e-5;
+  PetscReal divtol = PETSC_DETERMINE;
+  PetscInt maxit = 1000;
+
   KSP ksp;
 
   /**
@@ -83,15 +91,15 @@ protected:
   std::vector<bool> assembly_map;
 
   /// @brief Whether the new cells have been added into `indices_map`.
-  bool indices_assembled = false;
+  PetscInt indices_assembled = false;
+
+  std::vector<PetscReal> conv_hist;
 
   PetscClassId classid;
-  PetscLogEvent events[1];
+  PetscLogEvent events[2];
   PetscLogStage stagenums[6];
 
   SyncClock clock;
-
-  friend class EnergyConservation;
 };
 
 }  // namespace ecsim

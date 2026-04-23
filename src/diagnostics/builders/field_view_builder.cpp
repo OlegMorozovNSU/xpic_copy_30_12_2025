@@ -12,45 +12,71 @@ FieldViewBuilder::FieldViewBuilder(
 PetscErrorCode FieldViewBuilder::build(const Configuration::json_t& info)
 {
   PetscFunctionBeginUser;
-  FieldView::Region region;
-  region.start = Vector4I(0);
-  region.size = Vector4I(geom_nx, geom_ny, geom_nz, 3);
-  region.dim = 4;
-  region.dof = 3;
-
   std::string field;
   info.at("field").get_to(field);
 
-  std::string suffix;
-  region.start[3] = 0;
-  region.size[3] = 3;
+  std::string out_dir = field;
 
-  if (auto it = info.find("region"); it != info.end()) {
-    parse_region_start_size(*it, region, field);
-    parse_res_dir_suffix(*it, suffix);
+  DM da;
+  Vec f;
+  Region region;
+  region.dim = 4;
+  region.dof = 3;
+  region.start = Vector4I(0);
+  region.size = Vector4I(geom_nx, geom_ny, geom_nz, 3);
+
+  parse_field(info, da, f, region, field);
+
+  if (info.contains("region"))
+    parse_region(info.at("region"), region, field);
+
+  if (info.contains("out_dir"))
+    info.at("out_dir").get_to(out_dir);
+
+  LOG("  field view diagnostic is added for {}, output directory: {}", field, out_dir);
+
+  if (auto&& diagnostic =
+        FieldView::create(CONFIG().out_dir + "/" + out_dir, da, f, region)) {
+    diagnostics_.emplace_back(std::move(diagnostic));
   }
-
-  check_region(region, field);
-
-  LOG("  field view diagnostic is added for {}, suffix: {}", field, suffix.empty() ? "<empty>" : suffix);
-
-  if (!suffix.empty())
-    suffix = "_" + suffix;
-
-  std::string res_dir = CONFIG().out_dir + "/" + field + suffix + "/";
-
-  auto&& diagnostic = FieldView::create(
-    res_dir, simulation_.world.da, simulation_.get_named_vector(field), region);
-
-  if (!diagnostic)
-    PetscFunctionReturn(PETSC_SUCCESS);
-
-  diagnostics_.emplace_back(std::move(diagnostic));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
-void FieldViewBuilder::parse_region_start_size(const Configuration::json_t& info,
-  FieldView::Region& region, const std::string& name)
+void FieldViewBuilder::parse_field(const Configuration::json_t& info, DM& da,
+  Vec& f, Region& region, const std::string& name)
+{
+  DM da_field = simulation_.da;
+  DM da_rho = simulation_.da_rho;
+
+  std::map<std::string, std::pair<DM, Vec>> map{
+    {"E", {da_field, simulation_.E}},
+    {"B", {da_field, simulation_.B}},
+    {"J", {da_field, simulation_.J}},
+    {"B0", {da_field, simulation_.B0}},
+  };
+
+  for (auto&& sort : simulation_.particles_) {
+    std::string J_name = sort->parameters.sort_name + "/J";
+    std::string rho_name = sort->parameters.sort_name + "/rho";
+    map[J_name] = std::make_pair(da_field, sort->J);
+    map[rho_name] = std::make_pair(da_rho, sort->rho[1]);
+  }
+
+  if (!map.contains(name))
+    throw std::runtime_error("Incorrect name is used for " + name + ".");
+
+  std::tie(da, f) = map.at(name);
+
+  if (da == da_rho) {
+    region.dim = 3;
+    region.dof = 1;
+    region.start[3] = 0;
+    region.size[3] = 1;
+  }
+}
+
+void FieldViewBuilder::parse_region(
+  const Configuration::json_t& info, Region& region, const std::string& name)
 {
   Vector3R start{0.0};
   Vector3R size{Geom};
@@ -63,7 +89,7 @@ void FieldViewBuilder::parse_region_start_size(const Configuration::json_t& info
   PetscInt dim = (type == "3D") ? 3 : (type == "2D") ? 2 : -1;
 
   if (dim < 0)
-    throw std::runtime_error("Incorrect type is used for " + name + " .");
+    throw std::runtime_error("Incorrect type is used for " + name + ".");
 
   if (info.contains("start"))
     start = parse_vector(info, "start");
@@ -94,25 +120,8 @@ void FieldViewBuilder::parse_region_start_size(const Configuration::json_t& info
     region.start[i] = FLOOR_STEP(start[i], Dx[i]);
     region.size[i] = FLOOR_STEP(size[i], Dx[i]);
   }
-}
 
-void FieldViewBuilder::parse_res_dir_suffix(
-  const Configuration::json_t& info, std::string& suffix)
-{
-  std::string type = "3D";
-
-  if (info.contains("type"))
-    info.at("type").get_to(type);
-
-  if (type == "2D") {
-    std::string plane;
-    PetscReal position;
-    parse_plane_position(info, plane, position);
-
-    Axis dir = get_component(plane);
-    PetscInt position_format = FLOOR_STEP(position, Dx[dir]);
-    suffix += std::format("plane{}_{:04d}", plane, position_format);
-  }
+  check_region(region, name);
 }
 
 void FieldViewBuilder::parse_plane_position(
@@ -132,7 +141,7 @@ void FieldViewBuilder::parse_plane_position(
 }
 
 void FieldViewBuilder::check_region(
-  const FieldView::Region& region, const std::string& name) const
+  const Region& region, const std::string& name) const
 {
   Vector3I start = vector_cast(region.start);
   Vector3I size = vector_cast(region.size);

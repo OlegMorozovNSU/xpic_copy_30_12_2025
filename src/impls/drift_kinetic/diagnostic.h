@@ -2,7 +2,7 @@
 #define SRC_IMPLS_DRIFT_KINETIC_DIAGNOSTIC_H
 
 #include "src/diagnostics/distribution_moment.h"
-#include "src/diagnostics/utils/table_diagnostic.h"
+#include "src/diagnostics/table_diagnostic.h"
 #include "src/impls/drift_kinetic/particles.h"
 #include "src/utils/configuration.h"
 

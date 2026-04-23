@@ -13,7 +13,6 @@ int main(int argc, char** argv)
 
   World::set_geometry(REP3(5.0), 1.0, REP3(0.5), 1.0, 1.0);
 
-  /// @todo different boundary conditions should be tested
   World world;
   PetscCall(world.initialize());
 
@@ -25,15 +24,14 @@ int main(int argc, char** argv)
 
   /// @note We should create the diagnostic within some scope to properly run the destructors.
   {
-    /// @todo start, size should be tested, touch/no-touch.
-    FieldView::Region region{
+    Region region{
       .dim = 4,
       .dof = 3,
       .start = Vector4I{0, 0, 0, 0},
       .size = Vector4I{geom_nx, geom_ny, geom_nz, 3},
     };
 
-    /// @todo for mpi, it should be tested for local (sub-regions) with different communicators
+    /// @todo for MPI, it should be tested for local (sub-regions) with different communicators
     auto&& diag = FieldView::create(out_dir, world.da, v, region);
     PetscCall(diag->diagnose(0));
 

@@ -8,6 +8,8 @@
 #include "src/utils/geometries.h"
 #include "src/utils/vector3.h"
 
+/// @todo Simulation should be passed
+
 class SetMagneticField : public interfaces::Command {
 public:
   using Setter = std::function<PetscErrorCode(Vec)>;

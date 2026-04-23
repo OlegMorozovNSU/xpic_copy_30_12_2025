@@ -1,6 +1,6 @@
 # By default we are not using interactive backend
 import matplotlib
-matplotlib.use('Agg')
+# matplotlib.use('Agg')
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,7 +17,7 @@ bbox = dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.25')
 
 def figure(ncols: int, nrows: int, width_ratios: list[int] = None, height_ratios: list[int] = None, figsize=None):
     if figsize == None:
-        figsize = (8 * ncols * 1.2, 8 * nrows * 1.2)
+        figsize = (6 * ncols, 6 * nrows)
 
     fig = plt.figure(figsize=figsize)
 

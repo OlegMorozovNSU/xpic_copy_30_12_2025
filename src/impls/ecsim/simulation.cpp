@@ -134,7 +134,7 @@ PetscErrorCode Simulation::initialize_implementation()
   PetscCall(init_ksp_solvers());
   PetscCall(init_particles());
 
-  J = currI;
+  currI = J;
 
   PetscCall(PetscLogStagePop());
   PetscCall(init_clock.pop());
@@ -147,15 +147,10 @@ PetscErrorCode Simulation::timestep_implementation(PetscInt t)
   PetscFunctionBeginUser;
   PetscCall(clear_sources());
   PetscCall(first_push());
-  PetscCall(advance_fields(matL));
+  PetscCall(advance_fields());
   PetscCall(second_push());
   PetscCall(final_update());
   PetscCall(clock.log_timings());
-
-  if (t % diagnose_period == 0) {
-    for (auto& sort : particles_)
-      PetscCall(sort->log_distribution());
-  }
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -193,19 +188,21 @@ PetscErrorCode Simulation::first_push()
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
-PetscErrorCode Simulation::advance_fields(Mat matA)
+PetscErrorCode Simulation::advance_fields()
 {
   PetscFunctionBeginUser;
   PetscCall(clock.push(__FUNCTION__));
   PetscCall(PetscLogStagePush(stagenums[3]));
 
-  PetscCall(MatAXPY(matA, 1, matM, DIFFERENT_NONZERO_PATTERN));  // matA += matM
+  PetscCall(MatDuplicate(matL, MAT_COPY_VALUES, &matA));
+  PetscCall(MatAXPY(matA, 1, matM, DIFFERENT_NONZERO_PATTERN));
 
-  // Note that we use `matM` to construct the preconditioning matrix
-  PetscCall(KSPSetOperators(ksp, matA, matM));
+  PetscCall(KSPSetOperators(ksp, matA, matA));
   PetscCall(KSPSetUp(ksp));
 
   PetscCall(advance_fields(ksp, currI, Ep));
+
+  PetscCall(MatDestroy(&matA));
 
   PetscCall(PetscLogStagePop());
   PetscCall(clock.pop());
@@ -247,8 +244,9 @@ PetscErrorCode Simulation::final_update()
   PetscCall(clock.push("final_update1"));
   PetscCall(PetscLogStagePush(stagenums[5]));
 
-  PetscCall(VecAXPBY(E, 2, -1, Ep));  // E^{n+1} = 2 * E^{n+1/2} - E^{n}
-  PetscCall(MatMultAdd(rotE, Ep, B, B));  // B^{n+1} -= dt * rot(E^{n+1/2})
+  PetscCall(VecAXPBY(E, 2, -1, Ep));
+  PetscCall(MatMult(rotE, Ep, rE));
+  PetscCall(VecAXPY(B, -dt, rE));
 
   PetscCall(PetscLogStagePop());
   PetscCall(clock.pop());
@@ -258,25 +256,34 @@ PetscErrorCode Simulation::final_update()
 PetscErrorCode Simulation::advance_fields(KSP ksp, Vec curr, Vec out)
 {
   PetscFunctionBeginUser;
-  Vec rhs;
-  PetscCall(DMGetGlobalVector(da, &rhs));
   PetscCall(VecAXPY(B, -1, B0));
-
-  PetscCall(VecCopy(curr, rhs));
-  PetscCall(VecAXPBY(rhs, 2, -dt, E));  // rhs = 2 * E^{n} - dt * rhs
-  PetscCall(MatMultAdd(rotB, B, rhs, rhs));  // rhs = rhs + dt * rotB(B^{n})
-
-  PetscCall(KSPSolve(ksp, rhs, out));
-  PetscCall(KSPGetSolution(ksp, &out));
-
+  PetscCall(MatMult(rotB, B, rB));
+  PetscCall(VecCopy(E, rE));
+  PetscCall(VecAXPY(rE, -0.5 * dt, curr));
+  PetscCall(VecAXPY(rE, +0.5 * dt, rB));
   PetscCall(VecAXPY(B, +1, B0));
-  PetscCall(DMRestoreGlobalVector(da, &rhs));
+
+  PetscCall(KSPSolve(ksp, rE, out));
+  PetscCall(KSPGetSolution(ksp, &out));
 
   // Convergence analysis
   const char* name;
+  KSPConvergedReason reason;
+  PetscInt len;
+
   PetscCall(PetscObjectGetName((PetscObject)ksp, &name));
-  LOG("  KSPSolve() has finished for \"{}\", KSPConvergedReasonView():", name);
-  PetscCall(KSPConvergedReasonView(ksp, PETSC_VIEWER_STDOUT_WORLD));
+  PetscCall(KSPGetConvergedReason(ksp, &reason));
+  PetscCall(KSPGetResidualHistory(ksp, NULL, &len));
+
+  LOG("  KSPSolve() has finished for \"{}\"", name);
+  LOG("    Reason why solver finished: {}", KSPConvergedReasons[reason]);
+  LOG("    Total linear iterations: {}", len);
+
+  for (PetscInt i = 0; i < len; ++i) {
+    LOG("      {:2d} KSP Residual norm {:e}", i, conv_hist[i]);
+  }
+
+  PetscCheck(reason >= 0, PetscObjectComm((PetscObject)ksp), PETSC_ERR_NOT_CONVERGED, "KSPSolve has not converged");
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -285,6 +292,8 @@ PetscErrorCode Simulation::advance_fields(KSP ksp, Vec curr, Vec out)
 PetscErrorCode Simulation::update_cells_with_assembly()
 {
   PetscFunctionBeginUser;
+  PetscLogEventBegin(events[0], 0, 0, 0, 0);
+
   for (auto& sort : particles_)
     sort->update_cells();
 
@@ -333,6 +342,8 @@ PetscErrorCode Simulation::update_cells_with_assembly()
       }
     }
   }
+
+  PetscLogEventEnd(events[0], 0, 0, 0, 0);
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -343,7 +354,7 @@ PetscErrorCode Simulation::fill_ecsim_current()
   get_array_offset(0, world.size.elements_product(), size);
 
   // Because matrix setup is collective, we must call it on all mpi ranks
-  PetscCallMPI(MPI_Allreduce(MPI_IN_PLACE, &indices_assembled, 1, MPIU_BOOL, MPI_BAND, PETSC_COMM_WORLD));
+  PetscCallMPI(MPI_Allreduce(MPI_IN_PLACE, &indices_assembled, 1, MPIU_INT, MPI_BAND, PETSC_COMM_WORLD));
 
   if (!indices_assembled) {
     std::vector<PetscInt> coo_i(size, PETSC_DEFAULT);
@@ -366,7 +377,7 @@ PetscErrorCode Simulation::fill_ecsim_current()
   std::vector<PetscReal> coo_v(size, 0.0);
   PetscCall(fill_ecsim_current(coo_v.data()));
 
-  PetscCall(MatSetValuesCOO(matL, coo_v.data(), ADD_VALUES));
+  PetscCall(MatSetValuesCOO(matL, coo_v.data(), INSERT_VALUES));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -477,10 +488,14 @@ PetscErrorCode Simulation::fill_ecsim_current(PetscReal* coo_v)
   PetscCall(DMGlobalToLocal(da, B, INSERT_VALUES, B_loc));
   PetscCall(DMDAVecGetArrayRead(da, B_loc, &B_arr));
 
+  PetscLogEventBegin(events[1], B_loc, 0, 0, 0);
+
   for (auto& sort : particles_) {
     sort->B_arr = B_arr;
     PetscCall(sort->fill_ecsim_current(coo_v));
   }
+
+  PetscLogEventEnd(events[1], B_loc, 0, 0, 0);
 
   PetscCall(DMDAVecRestoreArrayRead(da, B_loc, &B_arr));
   PetscFunctionReturn(PETSC_SUCCESS);
@@ -498,8 +513,9 @@ void Simulation::get_array_offset(PetscInt begin_g, PetscInt end_g, PetscInt& of
 PetscErrorCode Simulation::init_log_stages()
 {
   PetscFunctionBeginUser;
-  PetscCall(PetscClassIdRegister("ecsimcorr::Simulation", &classid));
-  PetscCall(PetscLogEventRegister("fill_ecsim_curr", classid, &events[0]));
+  PetscCall(PetscClassIdRegister("ecsim::Simulation", &classid));
+  PetscCall(PetscLogEventRegister("update_cells_with_assembly", classid, &events[0]));
+  PetscCall(PetscLogEventRegister("fill_ecsim_current", classid, &events[1]));
 
   PetscCall(PetscLogStageRegister("Initialization", &stagenums[0]));
   PetscCall(PetscLogStageRegister("Clear sources", &stagenums[1]));
@@ -520,52 +536,38 @@ PetscErrorCode Simulation::init_particles()
 PetscErrorCode Simulation::init_vectors()
 {
   PetscFunctionBeginUser;
-  PetscCall(DMCreateGlobalVector(da, &E));
   PetscCall(DMCreateGlobalVector(da, &Ep));
-  PetscCall(DMCreateGlobalVector(da, &B));
-  PetscCall(DMCreateGlobalVector(da, &B0));
-  PetscCall(DMCreateGlobalVector(da, &currI));
-
-  PetscCall(DMCreateLocalVector(da, &E_loc));
-  PetscCall(DMCreateLocalVector(da, &B_loc));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
 PetscErrorCode Simulation::init_matrices()
 {
   PetscFunctionBeginUser;
-  PetscCall(DMSetMatrixPreallocateOnly(da, PETSC_FALSE));
-  PetscCall(DMSetMatrixPreallocateSkip(da, PETSC_TRUE));
-
   PetscCall(DMCreateMatrix(da, &matL));
   PetscCall(MatSetOption(matL, MAT_NEW_NONZERO_LOCATIONS, PETSC_TRUE));
-
-  Rotor rotor(da);
-  PetscCall(rotor.create_positive(&rotE));
-  PetscCall(rotor.create_negative(&rotB));
-
-  PetscCall(MatProductCreate(rotB, rotE, nullptr, &matM));
-  PetscCall(MatProductSetType(matM, MATPRODUCT_AB));
-  PetscCall(MatProductSetFromOptions(matM));
-  PetscCall(MatProductSymbolic(matM));
-  PetscCall(MatProductNumeric(matM));
-
-  PetscCall(MatScale(matM, 0.5 * dt * dt));
-  PetscCall(MatShift(matM, 2.0));
-
-  PetscCall(MatScale(rotE, -dt));
-  PetscCall(MatScale(rotB, +dt));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
 PetscErrorCode Simulation::init_ksp_solvers()
 {
   PetscFunctionBeginUser;
+  conv_hist.resize(maxit);
+
   PetscCall(KSPCreate(PETSC_COMM_WORLD, &ksp));
-  PetscCall(KSPSetErrorIfNotConverged(ksp, PETSC_TRUE));
-  PetscCall(KSPSetReusePreconditioner(ksp, PETSC_TRUE));
-  PetscCall(KSPSetTolerances(ksp, rtol, atol, PETSC_DEFAULT, PETSC_DEFAULT));
+  PetscCall(KSPSetTolerances(ksp, rtol, atol, divtol, maxit));
+  PetscCall(KSPSetResidualHistory(ksp, conv_hist.data(), maxit, PETSC_TRUE));
   PetscCall(KSPSetFromOptions(ksp));
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+PetscErrorCode Simulation::set_tolerances(
+  PetscReal atol, PetscReal rtol, PetscReal divtol, PetscInt maxit)
+{
+  PetscFunctionBeginUser;
+  this->atol = atol;
+  this->rtol = rtol;
+  this->divtol = divtol;
+  this->maxit = maxit;
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -573,22 +575,9 @@ PetscErrorCode Simulation::finalize()
 {
   PetscFunctionBeginUser;
   PetscCall(interfaces::Simulation::finalize());
-
   PetscCall(KSPDestroy(&ksp));
-
   PetscCall(MatDestroy(&matL));
-  PetscCall(MatDestroy(&matM));
-  PetscCall(MatDestroy(&rotE));
-  PetscCall(MatDestroy(&rotB));
-
-  PetscCall(VecDestroy(&E));
   PetscCall(VecDestroy(&Ep));
-  PetscCall(VecDestroy(&B));
-  PetscCall(VecDestroy(&B0));
-  PetscCall(VecDestroy(&currI));
-
-  PetscCall(VecDestroy(&E_loc));
-  PetscCall(VecDestroy(&B_loc));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

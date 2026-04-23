@@ -3,7 +3,7 @@
 
 #include "src/interfaces/particles.h"
 #include "src/diagnostics/distribution_moment.h"
-#include "src/diagnostics/utils/table_diagnostic.h"
+#include "src/diagnostics/table_diagnostic.h"
 
 class MomentumConservation : public TableDiagnostic {
 public:

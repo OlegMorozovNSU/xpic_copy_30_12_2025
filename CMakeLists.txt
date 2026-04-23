@@ -46,18 +46,19 @@ set(algorithms
 
 set(diagnostics
   src/diagnostics/field_view.cpp
+  src/diagnostics/field_view_zavg.cpp
   src/diagnostics/energy.cpp
   src/diagnostics/distribution_moment.cpp
   src/diagnostics/mat_dump.cpp
   src/diagnostics/log_view.cpp
   src/diagnostics/simulation_backup.cpp
-  src/diagnostics/energy_conservation.cpp
   src/diagnostics/charge_conservation.cpp
   src/diagnostics/momentum_conservation.cpp
   src/diagnostics/velocity_distribution.cpp
-  src/diagnostics/utils/table_diagnostic.cpp
+  src/diagnostics/table_diagnostic.cpp
   src/diagnostics/builders/diagnostic_builder.cpp
   src/diagnostics/builders/field_view_builder.cpp
+  src/diagnostics/builders/field_view_zavg_builder.cpp
   src/diagnostics/builders/distribution_moment_builder.cpp
   src/diagnostics/builders/log_view_builder.cpp
   src/diagnostics/builders/simulation_backup_builder.cpp
@@ -82,9 +83,6 @@ set(commands
 set(utils
   src/utils/utils.cpp
   src/utils/configuration.cpp
-  src/utils/mpi_binary_file.cpp
-  src/utils/sync_file.cpp
-  src/utils/sync_binary_file.cpp
   src/utils/sync_clock.cpp
   src/utils/operators.cpp
   src/utils/shape.cpp
@@ -95,30 +93,15 @@ set(utils
   src/utils/ziggurat_gaussian.cpp
 )
 
-set(impls_basic
+set(impls
   src/impls/basic/simulation.cpp
   src/impls/basic/particles.cpp
-)
-
-set(impls_ecsim
   src/impls/ecsim/simulation.cpp
   src/impls/ecsim/particles.cpp
-)
-
-set(impls_ecsimcorr
   src/impls/ecsimcorr/simulation.cpp
   src/impls/ecsimcorr/particles.cpp
-  src/impls/ecsimcorr/energy_conservation.cpp
-)
-
-set(impls_eccapfim
   src/impls/eccapfim/simulation.cpp
   src/impls/eccapfim/particles.cpp
-  src/impls/eccapfim/cell_traversal.cpp
-  src/impls/eccapfim/convergence_history.cpp
-)
-
-set(impls_drift_kinetic
   src/impls/drift_kinetic/simulation.cpp
   src/impls/drift_kinetic/diagnostic.cpp
   src/impls/drift_kinetic/particles.cpp
@@ -133,11 +116,7 @@ add_library(
   ${commands}
   ${diagnostics}
   ${utils}
-  ${impls_basic}
-  ${impls_ecsim}
-  ${impls_ecsimcorr}
-  ${impls_eccapfim}
-  ${impls_drift_kinetic}
+  ${impls}
 )
 
 target_precompile_headers(

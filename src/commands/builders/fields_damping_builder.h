@@ -15,9 +15,7 @@ public:
     std::string_view help =
       "{\n"
       "  \"command\": \"FieldsDamping\",\n"
-      "  \"E\": \"E\",\n"
-      "  \"B\": \"B\",\n"
-      "  \"B0\": \"B0\",\n"
+      "  \"damping_coefficient\": \"D\",\n"
       "  \"geometry\": {\n"
       "    \"name\": \"BoxGeometry\",\n"
       "    \"min\": 0,\n"

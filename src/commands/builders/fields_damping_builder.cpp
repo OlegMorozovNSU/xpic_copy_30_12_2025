@@ -11,9 +11,9 @@ FieldsDampingBuilder::FieldsDampingBuilder(
 PetscErrorCode FieldsDampingBuilder::build(const Configuration::json_t& info)
 {
   PetscFunctionBeginUser;
-  Vec E = simulation_.get_named_vector(info.at("E").get<std::string>());
-  Vec B = simulation_.get_named_vector(info.at("B").get<std::string>());
-  Vec B0 = simulation_.get_named_vector(info.at("B0").get<std::string>());
+  Vec E = simulation_.E;
+  Vec B = simulation_.B;
+  Vec B0 = simulation_.B0;
 
   PetscReal damping_coefficient;
   info.at("damping_coefficient").get_to(damping_coefficient);

@@ -27,7 +27,7 @@ Particles::Particles(Simulation& simulation, const SortParameters& parameters)
 PetscErrorCode Particles::first_push()
 {
   PetscFunctionBeginUser;
-  PetscCall(DMDAVecGetArray(world.da, currJe_loc, &currJe_arr));
+  PetscCall(DMDAVecGetArray(da, currJe_loc, &currJe_arr));
 
   PetscLogEventBegin(events[0], currJe_loc, 0, 0, 0);
 
@@ -45,7 +45,7 @@ PetscErrorCode Particles::first_push()
 
   PetscLogEventEnd(events[0], currJe_loc, 0, 0, 0);
 
-  PetscCall(DMDAVecRestoreArray(world.da, currJe_loc, &currJe_arr));
+  PetscCall(DMDAVecRestoreArray(da, currJe_loc, &currJe_arr));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -53,7 +53,7 @@ PetscErrorCode Particles::second_push()
 {
   PetscFunctionBeginUser;
   pred_w = 0.0;
-  PetscCall(DMDAVecGetArray(world.da, currJe_loc, &currJe_arr));
+  PetscCall(DMDAVecGetArray(da, currJe_loc, &currJe_arr));
 
   PetscLogEventBegin(events[1], 0, 0, 0, 0);
 
@@ -84,8 +84,8 @@ PetscErrorCode Particles::second_push()
   // Because we manually calculated `pred_w`, it is needed to reduce it between ranks
   PetscCallMPI(MPI_Allreduce(MPI_IN_PLACE, &pred_w, 1, MPIU_REAL, MPI_SUM, PETSC_COMM_WORLD));
 
-  PetscCall(DMDAVecRestoreArray(world.da, currJe_loc, &currJe_arr));
-  PetscCall(DMLocalToGlobal(world.da, currJe_loc, ADD_VALUES, currJe));
+  PetscCall(DMDAVecRestoreArray(da, currJe_loc, &currJe_arr));
+  PetscCall(DMLocalToGlobal(da, currJe_loc, ADD_VALUES, currJe));
   PetscCall(VecAXPY(simulation_.currJe, 1.0, currJe));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
@@ -137,13 +137,13 @@ PetscErrorCode Particles::calculate_energy()
   energy = 0.0;
 
   const PetscReal m = parameters.m;
-  const PetscInt Np = parameters.Np;
+  const PetscReal mpw = parameters.n / parameters.Np;
 
 #pragma omp parallel for reduction(+ : energy), \
   schedule(monotonic : dynamic, OMP_CHUNK_SIZE)
   for (auto& cell : storage)
     for (auto& point : cell)
-      energy += Energy::get_kinetic(point.p, m, Np);
+      energy += Energy::get_kinetic(point.p, m, mpw);
 
   PetscCallMPI(MPI_Allreduce(MPI_IN_PLACE, &energy, 1, MPIU_REAL, MPI_SUM, PETSC_COMM_WORLD));
   PetscFunctionReturn(PETSC_SUCCESS);
@@ -153,8 +153,8 @@ PetscErrorCode Particles::clear_sources()
 {
   PetscFunctionBeginUser;
   PetscCall(ecsim::Particles::clear_sources());
-  PetscCall(VecSet(currJe_loc, 0.0));
   PetscCall(VecSet(currJe, 0.0));
+  PetscCall(VecSet(currJe_loc, 0.0));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -162,8 +162,8 @@ PetscErrorCode Particles::finalize()
 {
   PetscFunctionBeginUser;
   PetscCall(ecsim::Particles::finalize());
-  PetscCall(VecDestroy(&currJe_loc));
-  PetscCall(VecDestroy(&currJe));
+  PetscCall(VecDestroy(&currI));
+  PetscCall(VecDestroy(&currI_loc));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

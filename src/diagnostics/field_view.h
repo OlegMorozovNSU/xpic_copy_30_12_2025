@@ -6,19 +6,10 @@
 
 #include "src/pch.h"
 #include "src/interfaces/diagnostic.h"
-#include "src/utils/mpi_binary_file.h"
-#include "src/utils/vector4.h"
-
+#include "src/utils/world.h"
 
 class FieldView : public interfaces::Diagnostic {
 public:
-  struct Region {
-    PetscInt dim;
-    PetscInt dof;
-    Vector4I start;
-    Vector4I size;
-  };
-
   /**
    * @brief Constructs `Field_view` diagnostic of a particular `field`.
    * @note Result _can_ be `nullptr`, if `region` doesn't touch
@@ -31,20 +22,28 @@ public:
   PetscErrorCode diagnose(PetscInt t) override;
 
 protected:
-  static PetscErrorCode get_local_communicator(
-    DM da, const Region& region, MPI_Comm* newcomm);
-
   FieldView(DM da, Vec field);
   FieldView(const std::string& out_dir, DM da, Vec field, MPI_Comm newcomm);
 
   virtual PetscErrorCode set_data_views(const Region& region);
 
-  DM da_;
-  Vec field_;
-  Region region_;
+  PetscErrorCode create_subarray(PetscInt ndim, const PetscInt sizes[],
+    const PetscInt subsizes[], const PetscInt starts[], MPI_Datatype* type);
 
-  MPI_Comm comm_;
-  MPI_BinaryFile file_;
+  PetscErrorCode open(const std::string& filename);
+  PetscErrorCode flush();
+  PetscErrorCode close();
+  PetscErrorCode write(PetscInt size, const PetscReal* data);
+
+  DM da;
+  Vec field;
+  Region region;
+
+  MPI_Comm comm = MPI_COMM_NULL;
+  MPI_File file = MPI_FILE_NULL;
+
+  MPI_Datatype memview = MPI_DATATYPE_NULL;
+  MPI_Datatype fileview = MPI_DATATYPE_NULL;
 };
 
 #endif  // SRC_DIAGNOSTICS_FIELD_VIEW_H

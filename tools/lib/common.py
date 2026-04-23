@@ -22,9 +22,6 @@ def time_average(func: Callable[[int], np.ndarray], t0: int, dt: int):
         result += func(t)
     return result / dt
 
-def format_time(t: int, Nt: int):
-    return str(t).zfill(len(str(Nt)))
-
 def makedirs(dirname):
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()

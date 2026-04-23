@@ -12,7 +12,7 @@ std::unique_ptr<DistributionMoment> DistributionMoment::create(
 {
   PetscFunctionBeginUser;
   MPI_Comm newcomm;
-  PetscCallAbort(PETSC_COMM_WORLD, get_local_communicator(particles.world.da, region, &newcomm));
+  PetscCallAbort(PETSC_COMM_WORLD, World::create_local_comm(particles.world.da, region, &newcomm));
   if (newcomm == MPI_COMM_NULL)
     PetscFunctionReturn(nullptr);
 
@@ -22,94 +22,38 @@ std::unique_ptr<DistributionMoment> DistributionMoment::create(
 }
 
 DistributionMoment::DistributionMoment(const interfaces::Particles& particles)
-  : FieldView(particles.world.da, nullptr), particles_(particles)
+  : FieldView(particles.world.da, nullptr), particles(particles)
 {
 }
 
 DistributionMoment::DistributionMoment(const std::string& out_dir,
   const interfaces::Particles& particles, const Moment& moment, MPI_Comm newcomm)
   : FieldView(out_dir, particles.world.da, nullptr, newcomm),
-    particles_(particles),
-    moment_(moment)
+    particles(particles),
+    moment(moment)
 {
+}
+
+PetscErrorCode DistributionMoment::set_data_views(const Region& reg)
+{
+  PetscFunctionBeginUser;
+  da_glob = da;
+  PetscCall(World::create_local_dm(da_glob, reg, comm, &da));
+  PetscCall(DMCreateGlobalVector(da, &field));
+  PetscCall(DMCreateLocalVector(da, &field_loc));
+  PetscCall(FieldView::set_data_views(reg));
+  PetscFunctionReturn(PETSC_SUCCESS);
 }
 
 PetscErrorCode DistributionMoment::finalize()
 {
   PetscFunctionBeginUser;
   PetscCall(FieldView::finalize());
-  PetscCall(VecDestroy(&local_));
-  PetscCall(VecDestroy(&field_));
-  PetscCall(DMDestroy(&da_));
+  PetscCall(VecDestroy(&field));
+  PetscCall(VecDestroy(&field_loc));
+  PetscCall(DMDestroy(&da));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
-
-PetscErrorCode DistributionMoment::set_data_views(const Region& region)
-{
-  PetscFunctionBeginUser;
-  PetscCall(set_local_da(region));
-  PetscCall(DMCreateLocalVector(da_, &local_));
-  PetscCall(DMCreateGlobalVector(da_, &field_));
-
-  PetscCall(FieldView::set_data_views(region));
-  PetscFunctionReturn(PETSC_SUCCESS);
-}
-
-/// @note First and foremost, for `ChargeConservation` diagnostic this can be avoided!
-PetscErrorCode DistributionMoment::set_local_da(const Region& region)
-{
-  PetscFunctionBeginUser;
-  global_da_ = da_;
-
-  Vector3I g_start = vector_cast(region.start);
-  Vector3I g_size = vector_cast(region.size);
-  Vector3I g_end = g_start + g_size;
-
-  PetscInt s;
-  DMDAStencilType st;
-  PetscInt size[3];
-  PetscInt proc[3];
-  DMBoundaryType bound[3];
-  PetscCall(DMDAGetInfo(global_da_, nullptr, REP3_A(&size), REP3_A(&proc), nullptr, &s, REP3_A(&bound), &st));
-
-  const PetscInt* ownership[3];
-  PetscCall(DMDAGetOwnershipRanges(global_da_, REP3_A(&ownership)));
-
-  PetscInt l_proc[3];
-  DMBoundaryType l_bound[3];
-  std::vector<PetscInt> l_ownership[3];
-
-  // Collecting number of processes and ownership ranges using global DMDA
-  for (PetscInt i = 0; i < 3; ++i) {
-    l_proc[i] = 0;
-
-    PetscInt start = 0, end = 0;
-
-    for (PetscInt s = 0; s < proc[i]; ++s) {
-      end += ownership[i][s];
-
-      if (g_start[i] < end && start < g_end[i]) {
-        l_proc[i]++;
-
-        PetscInt l_si = std::max(g_start[i], start);
-        PetscInt l_ei = std::min(g_end[i], end);
-
-        l_ownership[i].emplace_back(l_ei - l_si);
-      }
-
-      start += ownership[i][s];
-    }
-
-    // Mimic global boundaries, if we touch them
-    l_bound[i] = (g_size[i] == size[i]) ? bound[i] : DM_BOUNDARY_GHOSTED;
-  }
-
-  PetscCall(DMDACreate3d(comm_, REP3_A(l_bound), st, REP3_A(g_size), REP3_A(l_proc), region.dof, s, l_ownership[X].data(), l_ownership[Y].data(), l_ownership[Z].data(), &da_));
-  PetscCall(DMDASetOffset(da_, REP3_A(g_start), REP3(0)));
-  PetscCall(DMSetUp(da_));
-  PetscFunctionReturn(PETSC_SUCCESS);
-}
-
 
 PetscErrorCode DistributionMoment::diagnose(PetscInt t)
 {
@@ -144,11 +88,17 @@ struct DistributionMoment::Shape {
     Vector3R p_r = ::Shape::make_r(r);
     start = ::Shape::make_start(p_r, shr);
 
+    static const double offset[3]{
+      geom_nx == 1 ? 0.5 : 0,
+      geom_ny == 1 ? 0.5 : 0,
+      geom_nz == 1 ? 0.5 : 0,
+    };
+
 #pragma omp simd
     for (PetscInt i = 0; i < shm; ++i) {
-      auto g_x = (PetscReal)(start[X] + i % shw) + 0.5;
-      auto g_y = (PetscReal)(start[Y] + (i / shw) % shw) + 0.5;
-      auto g_z = (PetscReal)(start[Z] + (i / shw) / shw) + 0.5;
+      auto g_x = (PetscReal)(start[X] + i % shw) + offset[X];
+      auto g_y = (PetscReal)(start[Y] + (i / shw) % shw) + offset[Y];
+      auto g_z = (PetscReal)(start[Z] + (i / shw) / shw) + offset[Z];
       cache[i] = sfunc(p_r[X] - g_x) * sfunc(p_r[Y] - g_y) * sfunc(p_r[Z] - g_z);
     }
   }
@@ -157,17 +107,17 @@ struct DistributionMoment::Shape {
 PetscErrorCode DistributionMoment::collect()
 {
   PetscFunctionBeginUser;
-  PetscCall(VecSet(local_, 0.0));
-  PetscCall(VecSet(field_, 0.0));
+  PetscCall(VecSet(field, 0));
+  PetscCall(VecSet(field_loc, 0));
 
   PetscReal**** arr;
-  PetscCall(DMDAVecGetArrayDOFWrite(da_, local_, &arr));
+  PetscCall(DMDAVecGetArrayDOFWrite(da, field_loc, &arr));
 
   Vector3I start, size;
-  PetscCall(DMDAGetCorners(global_da_, REP3_A(&start), REP3_A(&size)));
+  PetscCall(DMDAGetCorners(da_glob, REP3_A(&start), REP3_A(&size)));
 
-  const Vector3I gstart = vector_cast(region_.start);
-  const Vector3I gsize = vector_cast(region_.size);
+  const Vector3I gstart = vector_cast(region.start);
+  const Vector3I gsize = vector_cast(region.size);
 
   Shape shape;
 
@@ -182,10 +132,10 @@ PetscErrorCode DistributionMoment::collect()
     if (!is_point_within_bounds(vg, gstart, gsize))
       continue;
 
-    for (auto&& point : particles_.storage[g]) {
+    for (auto&& point : particles.storage[g]) {
       shape.setup(point.r);
 
-      std::vector<PetscReal> moments = moment_(particles_, point);
+      std::vector<PetscReal> moments = moment(particles, point);
       auto msize = static_cast<PetscInt>(moments.size());
 
       for (PetscInt i = 0; i < shape.shm; ++i) {
@@ -193,7 +143,7 @@ PetscErrorCode DistributionMoment::collect()
         PetscInt g_y = shape.start[Y] + (i / shape.shw) % shape.shw;
         PetscInt g_z = shape.start[Z] + (i / shape.shw) / shape.shw;
 
-        PetscReal si = shape.cache[i] * particles_.n_Np(point);
+        PetscReal si = shape.cache[i] * particles.n_Np(point);
 
         for (PetscInt j = 0; j < msize; ++j) {
           PetscReal mj = moments[j] * si;
@@ -204,8 +154,8 @@ PetscErrorCode DistributionMoment::collect()
       }
     }
   }
-  PetscCall(DMDAVecRestoreArrayDOFWrite(da_, local_, &arr));
-  PetscCall(DMLocalToGlobal(da_, local_, ADD_VALUES, field_));
+  PetscCall(DMDAVecRestoreArrayDOFWrite(da, field_loc, &arr));
+  PetscCall(DMLocalToGlobal(da, field_loc, ADD_VALUES, field));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

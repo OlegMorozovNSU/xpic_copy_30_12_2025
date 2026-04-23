@@ -12,7 +12,11 @@ class Particles {
 public:
   Particles(const World& world, const SortParameters& parameters);
   virtual ~Particles() = default;
-  static int counter;
+
+  /// @brief Reference to outer `interfaces::Simulation::world`.
+  const World& world;
+  const DM da;
+  const DM da_rho;
 
   Arr E_arr;
   Arr B_arr;
@@ -21,9 +25,9 @@ public:
   Vec J_loc;
   Arr J_arr;
 
-  /// @brief Reference to outer `interfaces::Simulation::world`.
-  const World& world;
-  const DM da;
+  Vec rho[2];
+  Vec rho_loc[2];
+  PetscReal*** rho_arr[2];
 
   /// @brief Particles parameters, constant throughout the whole simulation run.
   const SortParameters parameters;
@@ -54,6 +58,9 @@ public:
   std::function<PetscErrorCode()> update_cells;
   PetscErrorCode update_cells_seq();
   PetscErrorCode update_cells_mpi();
+
+  PetscErrorCode initialize_rho();
+  PetscErrorCode calculate_rho();
 
   PetscReal mass(const Point& point) const;
   PetscReal charge(const Point& point) const;

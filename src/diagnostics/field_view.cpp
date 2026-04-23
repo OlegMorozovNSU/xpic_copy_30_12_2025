@@ -5,68 +5,81 @@
 
 
 std::unique_ptr<FieldView> FieldView::create(
-  const std::string& out_dir, DM da, Vec field, const Region& region)
+  const std::string& out_dir, DM da, Vec field, const Region& reg)
 {
   PetscFunctionBeginUser;
   MPI_Comm newcomm;
-  PetscCallAbort(PETSC_COMM_WORLD, get_local_communicator(da, region, &newcomm));
+  PetscCallAbort(PETSC_COMM_WORLD, World::create_local_comm(da, reg, &newcomm));
+
   if (newcomm == MPI_COMM_NULL)
     PetscFunctionReturn(nullptr);
 
   auto* diagnostic = new FieldView(out_dir, da, field, newcomm);
-  PetscCallAbort(PETSC_COMM_WORLD, diagnostic->set_data_views(region));
+  PetscCallAbort(PETSC_COMM_WORLD, diagnostic->set_data_views(reg));
   PetscFunctionReturn(std::unique_ptr<FieldView>(diagnostic));
 }
 
-/// @returns Non-null communicator for those processes,
-/// where region intersects with local boundaries of DM.
-PetscErrorCode FieldView::get_local_communicator(
-  DM da, const Region& region, MPI_Comm* newcomm)
-{
-  PetscFunctionBeginUser;
-  Vector3I r_start(region.start);
-  Vector3I r_size(region.size);
-  Vector3I start;
-  Vector3I size;
-  PetscCall(DMDAGetCorners(da, REP3_A(&start), REP3_A(&size)));
-
-  PetscMPIInt color =
-    is_region_intersect_bounds(r_start, r_size, start, size) ? 1 : MPI_UNDEFINED;
-  PetscMPIInt rank;
-  PetscCallMPI(MPI_Comm_rank(PETSC_COMM_WORLD, &rank));
-  PetscCallMPI(MPI_Comm_split(PETSC_COMM_WORLD, color, rank, newcomm));
-  PetscFunctionReturn(PETSC_SUCCESS);
-}
-
 FieldView::FieldView(DM da, Vec field)
-  : da_(da), field_(field)
+  : da(da), field(field)
 {
 }
 
-FieldView::FieldView(
-  const std::string& out_dir, DM da, Vec field, MPI_Comm newcomm)
-  : interfaces::Diagnostic(out_dir), da_(da), field_(field), comm_(newcomm)
+FieldView::FieldView(const std::string& out_dir, DM da, Vec field, MPI_Comm newcomm)
+  : interfaces::Diagnostic(out_dir), da(da), field(field), comm(newcomm)
 {
 }
 
 PetscErrorCode FieldView::finalize()
 {
   PetscFunctionBeginUser;
-  PetscCall(file_.finalize());
+  if (memview != MPI_DATATYPE_NULL)
+    PetscCallMPI(MPI_Type_free(&memview));
+
+  if (fileview != MPI_DATATYPE_NULL)
+    PetscCallMPI(MPI_Type_free(&fileview));
+
+  if (file != MPI_FILE_NULL)
+    PetscCall(close());
+
+  if (comm != MPI_COMM_NULL)
+    PetscCallMPI(MPI_Comm_free(&comm));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
-PetscErrorCode FieldView::set_data_views(const Region& region)
+PetscErrorCode FieldView::diagnose(PetscInt t)
+{
+  if (t % diagnose_period_ != 0)
+    return PETSC_SUCCESS;
+  PetscFunctionBeginUser;
+  PetscCall(open(out_dir_ + "/" + format_time(t)));
+
+  const PetscReal* arr;
+  PetscCall(VecGetArrayRead(field, &arr));
+
+  PetscInt dof;
+  Vector3I size;
+  PetscCall(DMDAGetDof(da, &dof));
+  PetscCall(DMDAGetCorners(da, REP3(nullptr), REP3_A(&size)));
+
+  PetscCall(write(size[X] * size[Y] * size[Z] * dof, arr));
+  PetscCall(close());
+
+  PetscCall(VecRestoreArrayRead(field, &arr));
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+
+PetscErrorCode FieldView::set_data_views(const Region& reg)
 {
   PetscFunctionBeginUser;
-  region_ = region;
+  region = reg;
 
   Vector4I l_start;
   Vector4I m_size;
-  Vector4I g_start = region_.start;
-  Vector4I f_size = region_.size;
-  PetscCall(DMDAGetCorners(da_, REP3_A(&l_start), REP3_A(&m_size)));
-  PetscCall(DMDAGetDof(da_, &m_size[3]));
+  Vector4I g_start = region.start;
+  Vector4I f_size = region.size;
+  PetscCall(DMDAGetCorners(da, REP3_A(&l_start), REP3_A(&m_size)));
+  PetscCall(DMDAGetDof(da, &m_size[3]));
 
   l_start.swap_order();
   g_start.swap_order();
@@ -83,36 +96,79 @@ PetscErrorCode FieldView::set_data_views(const Region& region)
   // memory start is in local coordinates
   m_start -= l_start;
 
-  if (region_.dof > 1) {
+  if (region.dof > 1) {
     f_start[3] = 0;
     m_start[3] = g_start[3];
     l_size[3] = f_size[3];
   }
 
-  PetscCall(file_.set_memview_subarray(region_.dim, m_size, l_size, m_start));
-  PetscCall(file_.set_fileview_subarray(region_.dim, f_size, l_size, f_start));
+  PetscCall(create_subarray(region.dim, m_size, l_size, m_start, &memview));
+  PetscCall(create_subarray(region.dim, f_size, l_size, f_start, &fileview));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
-
-PetscErrorCode FieldView::diagnose(PetscInt t)
+PetscErrorCode FieldView::create_subarray(PetscInt ndim, const PetscInt sizes[],
+  const PetscInt subsizes[], const PetscInt starts[], MPI_Datatype* type)
 {
-  if (t % diagnose_period_ != 0)
-    return PETSC_SUCCESS;
   PetscFunctionBeginUser;
-  PetscCall(file_.open(comm_, out_dir_ + "/" + format_time(t)));
+  PetscMPIInt d;
+  PetscCall(PetscMPIIntCast(ndim, &d));
 
-  const PetscReal* arr;
-  PetscCall(VecGetArrayRead(field_, &arr));
+  std::vector<PetscMPIInt> sz(d);
+  std::vector<PetscMPIInt> st(d);
+  std::vector<PetscMPIInt> sb(d);
+  for (PetscMPIInt i = 0; i < d; ++i) {
+    PetscCall(PetscMPIIntCast(sizes[i], &sz[i]));
+    PetscCall(PetscMPIIntCast(starts[i], &st[i]));
+    PetscCall(PetscMPIIntCast(subsizes[i], &sb[i]));
+  }
+  PetscCallMPI(MPI_Type_create_subarray(d, sz.data(), sb.data(), st.data(), MPI_ORDER_C, MPI_FLOAT, type));
+  PetscCallMPI(MPI_Type_commit(type));
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
 
-  PetscInt dof;
-  Vector3I size;
-  PetscCall(DMDAGetDof(da_, &dof));
-  PetscCall(DMDAGetCorners(da_, REP3(nullptr), REP3_A(&size)));
+PetscErrorCode FieldView::open(const std::string& filename)
+{
+  PetscFunctionBeginHot;
+  std::filesystem::path fname(filename);
 
-  PetscCall(file_.write_floats(size[X] * size[Y] * size[Z] * dof, arr));
-  PetscCall(file_.close());
+  PetscInt rank;
+  PetscCallMPI(MPI_Comm_rank(comm, &rank));
+  if (rank == 0) {
+    std::filesystem::create_directories(fname.parent_path());
+    std::filesystem::remove(filename);
+  }
+  PetscCallMPI(MPI_Barrier(comm));
+  PetscCallMPI(MPI_File_open(comm, fname.c_str(), MPI_MODE_WRONLY | MPI_MODE_CREATE, MPI_INFO_NULL, &file));
+  PetscCallMPI(MPI_File_set_view(file, 0, MPI_FLOAT, fileview, "native", MPI_INFO_NULL));
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
 
-  PetscCall(VecRestoreArrayRead(field_, &arr));
+PetscErrorCode FieldView::flush()
+{
+  PetscFunctionBeginHot;
+  PetscCallMPI(MPI_File_sync(file));
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+PetscErrorCode FieldView::close()
+{
+  PetscFunctionBeginHot;
+  PetscCallMPI(MPI_File_close(&file));
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+PetscErrorCode FieldView::write(PetscInt size, const PetscReal* data)
+{
+  PetscFunctionBeginHot;
+#if defined(PETSC_USE_REAL_SINGLE)
+  PetscCallMPI(MPI_File_write_all(file_, data, 1, memview_, MPI_STATUS_IGNORE));
+#else
+  /// @todo It works, but it can be expensive for small datasets. We should exploit memview_.
+  std::vector<float> buf(size);
+  for (PetscInt i = 0; i < size; ++i)
+    buf[i] = static_cast<float>(data[i]);
+  PetscCallMPI(MPI_File_write_all(file, buf.data(), 1, memview, MPI_STATUS_IGNORE));
+#endif
   PetscFunctionReturn(PETSC_SUCCESS);
 }

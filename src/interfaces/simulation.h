@@ -7,12 +7,12 @@
 #include "src/interfaces/particles.h"
 #include "src/utils/world.h"
 
-class EnergyConservation;
+class Energy;
 
 namespace interfaces {
 
 class Simulation {
-  friend class ::EnergyConservation;
+  friend class ::Energy;
 
 public:
   Simulation() = default;
@@ -29,6 +29,7 @@ public:
   World world;
 
   DM da;
+  DM da_rho;
 
   Vec E;
   Vec E_loc;
@@ -46,6 +47,11 @@ public:
 
   Mat rotE;
   Mat rotB;
+  Mat matM; // (I + (0.25 * dt * dt) rotB * rotE)
+  Mat divE;
+
+  // Utility vectors (e.g. to store rotE * E)
+  Vec rE, rB;
 
   /**
    * @brief Container of abstract particles, the down-casted pointers to this
@@ -61,7 +67,6 @@ public:
   PetscErrorCode calculate();
   virtual PetscErrorCode finalize();
 
-  virtual Vec get_named_vector(std::string_view name) const;
   Particles& get_named_particles(std::string_view name);
 
 protected:

@@ -11,22 +11,27 @@ namespace ecsim {
 Particles::Particles(Simulation& simulation, const SortParameters& parameters)
   : interfaces::Particles(simulation.world, parameters), simulation_(simulation)
 {
-  PetscCallAbort(PETSC_COMM_WORLD, DMCreateGlobalVector(da, &currI));
-  PetscCallAbort(PETSC_COMM_WORLD, DMCreateLocalVector(da, &currI_loc));
+  currI = J;
+  currI_loc = J_loc;
 
-  J = currI;
-  J_loc = currI_loc;
+  PetscCallAbort(PETSC_COMM_WORLD, PetscClassIdRegister("ecsim::Particles", &classid));
+  PetscCallAbort(PETSC_COMM_WORLD, PetscLogEventRegister("first_push", classid, &events[0]));
+  PetscCallAbort(PETSC_COMM_WORLD, PetscLogEventRegister("second_push", classid, &events[1]));
 }
 
 PetscErrorCode Particles::first_push()
 {
   PetscFunctionBeginUser;
+  PetscLogEventBegin(events[0], 0, 0, 0, 0);
+
 #pragma omp parallel for schedule(monotonic : dynamic, OMP_CHUNK_SIZE)
   for (auto& cell : storage) {
     for (auto& point : cell) {
       BorisPush::update_r(dt, point);
     }
   }
+
+  PetscLogEventEnd(events[0], 0, 0, 0, 0);
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -106,7 +111,7 @@ void Particles::decompose_ecsim_current(const Point& point, PetscReal* coo_v)
 
   Vector3R b = interpolate_B_s1(B_arr, r) * ((0.5 * dt) * q / m);
   Vector3R I_p = q * mpw / (1. + b.squared()) * (v + v.cross(b) + v.dot(b) * b);
-  PetscReal A_p = 0.5 * dt * dt * mpw * q * q / m / (1 + b.squared());
+  PetscReal A_p = 0.25 * dt * dt * mpw * q * q / m / (1 + b.squared());
 
   const PetscReal matB[3][3]{
     {1.0 + b[X] * b[X], +b[Z] + b[X] * b[Y], -b[Y] + b[X] * b[Z]},
@@ -175,6 +180,8 @@ void Particles::decompose_ecsim_current(const Point& point, PetscReal* coo_v)
 PetscErrorCode Particles::second_push()
 {
   PetscFunctionBeginUser;
+  PetscLogEventBegin(events[2], 0, 0, 0, 0);
+
   PetscReal q = parameters.q;
   PetscReal m = parameters.m;
 
@@ -188,6 +195,8 @@ PetscErrorCode Particles::second_push()
       push.update_vEB(dt, point);
     }
   }
+
+  PetscLogEventBegin(events[2], 0, 0, 0, 0);
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -196,14 +205,6 @@ PetscErrorCode Particles::clear_sources()
   PetscFunctionBeginUser;
   PetscCall(VecSet(currI, 0.0));
   PetscCall(VecSet(currI_loc, 0.0));
-  PetscFunctionReturn(PETSC_SUCCESS);
-}
-
-PetscErrorCode Particles::finalize()
-{
-  PetscFunctionBeginUser;
-  PetscCall(VecDestroy(&currI));
-  PetscCall(VecDestroy(&currI_loc));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 

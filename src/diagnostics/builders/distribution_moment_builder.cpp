@@ -35,40 +35,33 @@ PetscErrorCode DistributionMomentBuilder::build(const Configuration::json_t& inf
     throw std::runtime_error(
       "Unknown moment name " + moment + " for particles " + particles);
 
-  FieldView::Region region;
+  std::string out_dir = particles + "/" + moment;
+
+  Region region;
   region.dim = it->second > 1 ? 4 : 3;
   region.dof = it->second;
-
   region.start = Vector4I(0);
   region.size = Vector4I(geom_nx, geom_ny, geom_nz, region.dof);
 
-  std::string suffix;
+  if (info.contains("region"))
+    parse_region(info.at("region"), region, particles + " " + moment);
 
-  if (auto it = info.find("region"); it != info.end()) {
-    parse_region_start_size(*it, region, particles + " " + moment);
-    parse_res_dir_suffix(*it, suffix);
-  }
+  if (info.contains("out_dir"))
+    info.at("out_dir").get_to(out_dir);
 
-  check_region(region, particles + " " + moment);
-
-  LOG("  {} diagnostic is added for {}, suffix: {}", moment, particles, suffix.empty() ? "<empty>" : suffix);
-
-  if (!suffix.empty())
-    suffix = "_" + suffix;
-
-  std::string res_dir =
-    CONFIG().out_dir + "/" + particles + "/" + moment + suffix;
+  LOG("  {} diagnostic is added for {}, output directory: {}", moment, particles, out_dir);
 
   std::unique_ptr<DistributionMoment> diagnostic;
 
+  /// @todo Unify this code to avoid separation by different particle types
   auto* dk_particles = dynamic_cast<const drift_kinetic::Particles*>(&simulation_.get_named_particles(particles));
 
   if (dk_particles != nullptr) {
     diagnostic = drift_kinetic::DkDistributionMoment::create(
-      res_dir, *dk_particles, moment_from_string(moment), region);
+      out_dir, *dk_particles, moment_from_string(moment), region);
   } else {
     diagnostic = DistributionMoment::create(
-      res_dir, simulation_.get_named_particles(particles),
+      out_dir, simulation_.get_named_particles(particles),
       moment_from_string(moment), region);
   }
 

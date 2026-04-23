@@ -2,6 +2,8 @@
 
 #include "src/interfaces/builder.h"
 #include "src/utils/configuration.h"
+#include "src/utils/operators.h"
+#include "src/utils/vector_utils.h"
 
 World::World()
   : procs(REP3(PETSC_DECIDE)), bounds(REP3(DM_BOUNDARY_NONE))
@@ -37,6 +39,17 @@ PetscErrorCode World::initialize()
   PetscCall(DMSetFromOptions(da));
   PetscCall(DMSetUp(da));
 
+  Region region{
+    .dim = 3,
+    .dof = 1,
+    .start = Vector4I(0, 0, 0, 0),
+    .size = Vector4I(geom_nx, geom_ny, geom_nz, 1),
+  };
+  PetscCall(create_local_dm(da, region, PETSC_COMM_WORLD, &da_rho));
+
+  PetscCall(DMSetApplicationContext(da, this));
+  PetscCall(DMSetApplicationContext(da_rho, this));
+
   PetscCall(DMDAGetInfo(da, NULL, REP3(NULL), REP3_A(&procs), NULL, NULL, REP3(NULL), NULL));
   PetscCall(DMDAGetNeighbors(da, &neighbors));
   PetscCall(DMDAGetCorners(da, REP3_A(&start), REP3_A(&size)));
@@ -59,6 +72,82 @@ PetscErrorCode World::finalize()
 World::~World()
 {
   PetscCallAbort(PETSC_COMM_WORLD, finalize());
+}
+
+
+/**
+ * @returns Non-null communicator for those processes,
+ * where region intersects with local boundaries of DM.
+ */
+PetscErrorCode World::create_local_comm(
+  DM da, const Region& region, MPI_Comm* local_comm)
+{
+  PetscFunctionBeginUser;
+  Vector3I r_start(region.start);
+  Vector3I r_size(region.size);
+  Vector3I start;
+  Vector3I size;
+  PetscCall(DMDAGetCorners(da, REP3_A(&start), REP3_A(&size)));
+
+  PetscMPIInt color =
+    is_region_intersect_bounds(r_start, r_size, start, size) ? 1 : MPI_UNDEFINED;
+  PetscMPIInt rank;
+  PetscCallMPI(MPI_Comm_rank(PETSC_COMM_WORLD, &rank));
+  PetscCallMPI(MPI_Comm_split(PETSC_COMM_WORLD, color, rank, local_comm));
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+PetscErrorCode World::create_local_dm(
+  DM da, const Region& region, MPI_Comm local_comm, DM* local_da)
+{
+  PetscFunctionBeginUser;
+  Vector3I g_start = vector_cast(region.start);
+  Vector3I g_size = vector_cast(region.size);
+  Vector3I g_end = g_start + g_size;
+
+  PetscInt s;
+  DMDAStencilType st;
+  PetscInt size[3];
+  PetscInt proc[3];
+  DMBoundaryType bound[3];
+  PetscCall(DMDAGetInfo(da, nullptr, REP3_A(&size), REP3_A(&proc), nullptr, &s, REP3_A(&bound), &st));
+
+  const PetscInt* ownership[3];
+  PetscCall(DMDAGetOwnershipRanges(da, REP3_A(&ownership)));
+
+  PetscInt l_proc[3];
+  DMBoundaryType l_bound[3];
+  std::vector<PetscInt> l_ownership[3];
+
+  // Collecting number of processes and ownership ranges using global DMDA
+  for (PetscInt i = 0; i < 3; ++i) {
+    l_proc[i] = 0;
+
+    PetscInt start = 0, end = 0;
+
+    for (PetscInt s = 0; s < proc[i]; ++s) {
+      end += ownership[i][s];
+
+      if (g_start[i] < end && start < g_end[i]) {
+        l_proc[i]++;
+
+        PetscInt l_si = std::max(g_start[i], start);
+        PetscInt l_ei = std::min(g_end[i], end);
+
+        l_ownership[i].emplace_back(l_ei - l_si);
+      }
+
+      start += ownership[i][s];
+    }
+
+    // Mimic global boundaries, if we touch them
+    l_bound[i] = (g_size[i] == size[i]) ? bound[i] : DM_BOUNDARY_GHOSTED;
+  }
+
+  PetscCall(DMDACreate3d(local_comm, REP3_A(l_bound), st, REP3_A(g_size), REP3_A(l_proc), region.dof, s, l_ownership[X].data(), l_ownership[Y].data(), l_ownership[Z].data(), local_da));
+  PetscCall(DMDASetOffset(*local_da, REP3_A(g_start), REP3(0)));
+  PetscCall(DMSetUp(*local_da));
+  PetscFunctionReturn(PETSC_SUCCESS);
 }
 
 

@@ -13,7 +13,7 @@ std::unique_ptr<VelocityDistribution> VelocityDistribution::create(
   PetscFunctionBeginUser;
   // Communicator is based on axis-aligned bounding box (AABB) of space integration domain
   MPI_Comm newcomm;
-  PetscCallAbort(PETSC_COMM_WORLD, get_local_communicator(particles.world.da, xreg_aabb, &newcomm));
+  PetscCallAbort(PETSC_COMM_WORLD, World::create_local_comm(particles.world.da, xreg_aabb, &newcomm));
   if (newcomm == MPI_COMM_NULL)
     PetscFunctionReturn(nullptr);
 
@@ -38,9 +38,9 @@ PetscErrorCode VelocityDistribution::finalize()
   PetscFunctionBeginUser;
   PetscCall(ISDestroy(&is));
   PetscCall(VecScatterDestroy(&ctx));
-  PetscCall(VecDestroy(&local_));
-  PetscCall(VecDestroy(&field_));
-  PetscCall(DMDestroy(&da_));
+  PetscCall(VecDestroy(&field_loc));
+  PetscCall(VecDestroy(&field));
+  PetscCall(DMDestroy(&da));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -67,23 +67,23 @@ PetscErrorCode VelocityDistribution::set_regions(
   };
 
   // da in coordinate space
-  global_da_ = da_;
+  da_glob = da;
 
   const PetscInt size = vsize.elements_product();
 
   // da should be re-created (in velocity space) to be used in FieldView and set up the field, corners
-  PetscCall(DMDACreate2d(comm_, REP2(DM_BOUNDARY_NONE), DMDA_STENCIL_BOX, REP2_A(vsize), REP2(PETSC_DECIDE), 1, 0, REP2(nullptr), &da_));
-  PetscCall(DMDASetOffset(da_, REP3_A(vstart), REP3(0)));
-  PetscCall(DMSetUp(da_));
+  PetscCall(DMDACreate2d(comm, REP2(DM_BOUNDARY_NONE), DMDA_STENCIL_BOX, REP2_A(vsize), REP2(PETSC_DECIDE), 1, 0, REP2(nullptr), &da));
+  PetscCall(DMDASetOffset(da, REP3_A(vstart), REP3(0)));
+  PetscCall(DMSetUp(da));
 
   // field is mpi (when needed), local vector is sequential
-  PetscCall(DMCreateGlobalVector(da_, &field_));
-  PetscCall(VecCreate(PETSC_COMM_SELF, &local_));
-  PetscCall(VecSetSizes(local_, size, size));
-  PetscCall(VecSetType(local_, VECSEQ));
+  PetscCall(DMCreateGlobalVector(da, &field));
+  PetscCall(VecCreate(PETSC_COMM_SELF, &field_loc));
+  PetscCall(VecSetSizes(field_loc, size, size));
+  PetscCall(VecSetType(field_loc, VECSEQ));
 
-  PetscCall(ISCreateStride(comm_, size, 0, 1, &is));
-  PetscCall(VecScatterCreate(local_, is, field_, is, &ctx));
+  PetscCall(ISCreateStride(comm, size, 0, 1, &is));
+  PetscCall(VecScatterCreate(field_loc, is, field, is, &ctx));
 
   PetscCall(set_data_views({}));
   PetscFunctionReturn(PETSC_SUCCESS);
@@ -98,13 +98,13 @@ PetscErrorCode VelocityDistribution::set_data_views(const Region& /* reg */)
 
   PetscInt l_start[2];
   PetscInt l_size[2];
-  PetscCall(DMDAGetCorners(da_, REP2_AP(&l_start), nullptr, REP2_AP(&l_size), nullptr));
+  PetscCall(DMDAGetCorners(da, REP2_AP(&l_start), nullptr, REP2_AP(&l_size), nullptr));
 
   l_start[X] -= g_start[X];
   l_start[Y] -= g_start[Y];
 
-  PetscCall(file_.set_memview_subarray(2, l_size, l_size, m_start));
-  PetscCall(file_.set_fileview_subarray(2, g_size, l_size, l_start));
+  PetscCall(create_subarray(2, l_size, l_size, m_start, &memview));
+  PetscCall(create_subarray(2, g_size, l_size, l_start, &fileview));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -112,14 +112,14 @@ PetscErrorCode VelocityDistribution::set_data_views(const Region& /* reg */)
 PetscErrorCode VelocityDistribution::collect()
 {
   PetscFunctionBeginUser;
-  PetscCall(VecSet(local_, 0.0));
-  PetscCall(VecSet(field_, 0.0));
+  PetscCall(VecSet(field, 0.0));
+  PetscCall(VecSet(field_loc, 0.0));
 
   PetscReal** arr;
-  PetscCall(VecGetArray2dWrite(local_, REP2_A(vsize), REP2_A(vstart), &arr));
+  PetscCall(VecGetArray2dWrite(field_loc, REP2_A(vsize), REP2_A(vstart), &arr));
 
   Vector3I start, size;
-  PetscCall(DMDAGetCorners(global_da_, REP3_A(&start), REP3_A(&size)));
+  PetscCall(DMDAGetCorners(da, REP3_A(&start), REP3_A(&size)));
 
 #pragma omp parallel for
   for (PetscInt g = 0; g < size.elements_product(); ++g) {
@@ -141,7 +141,7 @@ PetscErrorCode VelocityDistribution::collect()
     if (!within_geom(r))
       continue;
 
-    for (auto&& point : particles_.storage[g]) {
+    for (auto&& point : particles.storage[g]) {
       auto [vx, vy] = projector(point);
 
       vg[X] = ROUND_STEP(vx, vreg.dvx);
@@ -152,13 +152,13 @@ PetscErrorCode VelocityDistribution::collect()
         continue;
 
 #pragma omp atomic update
-      arr[vg[Y]][vg[X]] += particles_.n_Np(point);
+      arr[vg[Y]][vg[X]] += particles.n_Np(point);
     }
   }
 
-  PetscCall(VecRestoreArray2dWrite(local_, REP2_A(vsize), REP2_A(vstart), &arr));
-  PetscCall(VecScatterBegin(ctx, local_, field_, ADD_VALUES, SCATTER_FORWARD));
-  PetscCall(VecScatterEnd(ctx, local_, field_, ADD_VALUES, SCATTER_FORWARD));
+  PetscCall(VecRestoreArray2dWrite(field_loc, REP2_A(vsize), REP2_A(vstart), &arr));
+  PetscCall(VecScatterBegin(ctx, field_loc, field, ADD_VALUES, SCATTER_FORWARD));
+  PetscCall(VecScatterEnd(ctx, field_loc, field, ADD_VALUES, SCATTER_FORWARD));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
