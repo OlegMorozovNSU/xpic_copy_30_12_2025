@@ -39,10 +39,10 @@ def time_wpe(t: int):
     return f"$\\omega_{{ pe }}\\,t = {t * const.dt:.3f}$"
 
 def time_wce(t: int):
-    return f"$\\Omega_{{ e }}\\,t = {t * const.dt * const.B0:.3f}$"
+    return f"$\\Omega_e\\,t = {t * const.dt * const.B0:.3f}$"
 
 def time_wci(t: int):
-    return f"$\\Omega_{{ i }}\\,t = {t * const.dt * (const.B0 / const.mi_me):.3f}$"
+    return f"$\\Omega_i\\,t = {t * const.dt * (const.B0 / const.mi_me):.3f}$"
 
 def time_tau(t: int):
     return f"$t / \\tau = {t * const.dt / const.tau:.3f}$"
