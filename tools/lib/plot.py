@@ -98,15 +98,11 @@ class PlotIm:
         self.bounds = bounds
         self.axis = axis
         self.info = PlotAxisInfo(axis)
-        self.im: plt.AxesImage = None
-        self.cbar: plt.Colorbar = None
-        self.vmin: float = vmap[0]
-        self.vmax: float = vmap[1]
-        self.cmap: plt.Colormap = cmap
-
-    def set_axis(self, axis: plt.Axes):
-        self.axis = axis
-        self.info.axis = axis
+        self.im = None
+        self.cbar = None
+        self.vmin = vmap[0]
+        self.vmax = vmap[1]
+        self.cmap = cmap
 
     def draw(self, **kwargs):
         self.im = self.axis.imshow(
@@ -167,44 +163,19 @@ class PlotIm:
         yax.get_offset_text().set_size(0.82 * ticksize)
 
     def clear(self):
-        self.axis.cla()
+        self.axis.clear()
 
 class PlotLinear:
-    def __init__(
-        self,
-        vmap: tuple[float] = None,
-        axis: plt.Axes = None):
-
-        self.data: np.ndarray[np.float32] = None
-
-        self.axis: plt.Axes = axis
-        self.plot: plt.Line2D = None
-
-        self.info = PlotAxisInfo(axis)
-
-        if vmap != None:
-            self.info.args["ylim"] = vmap
-            self.info.args["yticks"] = np.linspace(vmap[0], vmap[1], 5)
-
-        self.plot_info: dict[str, Any] = {}
-
-    def set_axis(self, axis: plt.Axes):
+    def __init__(self, axis = None, vmap = None):
         self.axis = axis
-        self.info.axis = axis
-
-    def draw(self, x):
-        self.plot = self.axis.plot(x, self.data, **self.plot_info)
-        self.draw_info()
+        self.info = PlotAxisInfo(axis)
 
     def draw_info(self):
         self.info.draw()
-
-        if "label" in self.plot_info:
-            self.axis.legend()
 
         yax = self.axis.yaxis
         yax.OFFSETTEXTPAD = 8
         yax.get_offset_text().set_size(0.82 * ticksize)
 
     def clear(self):
-        self.axis.cla()
+        self.axis.clear()
