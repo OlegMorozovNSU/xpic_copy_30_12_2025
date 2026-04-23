@@ -1,5 +1,6 @@
 #include "field_view_builder.h"
 
+#include "src/impls/drift_kinetic/simulation.h"
 #include "src/utils/configuration.h"
 #include "src/utils/vector_utils.h"
 
@@ -60,6 +61,10 @@ void FieldViewBuilder::parse_field(const Configuration::json_t& info, DM& da,
     std::string rho_name = sort->parameters.sort_name + "/rho";
     map[J_name] = std::make_pair(da_field, sort->J);
     map[rho_name] = std::make_pair(da_rho, sort->rho[1]);
+  }
+
+  if (auto&& simulation = dynamic_cast<drift_kinetic::Simulation*>(&simulation_)) {
+    map["M"] = std::make_pair(da_field, simulation->M);
   }
 
   if (!map.contains(name))

@@ -16,9 +16,9 @@ public:
   Simulation() = default;
   PetscErrorCode finalize() override;
 
-  Vec get_named_vector(std::string_view name) const override;
-
   std::vector<std::shared_ptr<drift_kinetic::Particles>> particles_;
+
+  Vec M;
 
 protected:
   PetscErrorCode initialize_implementation() override;
@@ -42,8 +42,6 @@ protected:
   PetscErrorCode from_snes(Vec v, Vec vE, Vec vB);
   PetscErrorCode to_snes(Vec vE, Vec vB, Vec v);
 
-
-  Vec M;
 
   Vec B_hk;
   Vec E_hk;

@@ -21,26 +21,17 @@ PetscErrorCode SetMagneticFieldBuilder::build(const Configuration::json_t& info)
   std::string command;
   info.at("command").get_to(command);
 
+  Vec F = NULL;
+  Vec F0 = NULL;
   std::string field;
+
   if (command == "SetElectricField") {
-    field = "E";
-    if (auto it = info.find("field"); it != info.end()) {
-      field = it->get<std::string>();
-      if (field != "E") {
-        throw std::runtime_error(
-          "SetElectricField allows only field=\"E\", got: " + field);
-      }
-    }
+    F = simulation_.E;
   }
   else {
-    info.at("field").get_to(field);
+    F = simulation_.B;
+    F0 = simulation_.B0;
   }
-
-  Vec field_vector = simulation_.get_named_vector(field);
-
-  Vec field_axpy = nullptr;
-  if (auto it = info.find("field_axpy"); it != info.end())
-    field_axpy = simulation_.get_named_vector(it->get<std::string>());
 
   const Configuration::json_t& setter = info.at("setter");
 
@@ -104,7 +95,7 @@ PetscErrorCode SetMagneticFieldBuilder::build(const Configuration::json_t& info)
   }
 
   commands_.emplace_back(
-    std::make_unique<SetMagneticField>(field_vector, field_axpy, std::move(setup)));
+    std::make_unique<SetMagneticField>(F, F0, std::move(setup)));
 
   LOG("  {} command is added for {}", command, field);
   PetscFunctionReturn(PETSC_SUCCESS);

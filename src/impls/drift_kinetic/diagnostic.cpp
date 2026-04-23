@@ -71,7 +71,7 @@ std::unique_ptr<DkDistributionMoment> DkDistributionMoment::create(
 {
   PetscFunctionBeginUser;
   MPI_Comm newcomm;
-  PetscCallAbort(PETSC_COMM_WORLD, get_local_communicator(particles.world.da, region, &newcomm));
+  PetscCallAbort(PETSC_COMM_WORLD, World::create_local_comm(particles.world.da, region, &newcomm));
   if (newcomm == MPI_COMM_NULL)
     PetscFunctionReturn(nullptr);
 
@@ -83,29 +83,29 @@ std::unique_ptr<DkDistributionMoment> DkDistributionMoment::create(
 DkDistributionMoment::DkDistributionMoment(const std::string& out_dir,
   const Particles& particles, const Moment& moment, MPI_Comm newcomm)
   : ::DistributionMoment(out_dir, particles, moment, newcomm),
-    dk_particles_(particles)
+    dk_particles(particles)
 {
 }
 
 PetscErrorCode DkDistributionMoment::collect()
 {
   PetscFunctionBeginUser;
-  PetscCall(VecSet(local_, 0.0));
-  PetscCall(VecSet(field_, 0.0));
+  PetscCall(VecSet(field_loc, 0.0));
+  PetscCall(VecSet(field, 0.0));
 
   PetscReal**** arr;
-  PetscCall(DMDAVecGetArrayDOFWrite(da_, local_, &arr));
+  PetscCall(DMDAVecGetArrayDOFWrite(da, field_loc, &arr));
 
   Vector3I start, size;
-  PetscCall(DMDAGetCorners(global_da_, REP3_A(&start), REP3_A(&size)));
+  PetscCall(DMDAGetCorners(da_glob, REP3_A(&start), REP3_A(&size)));
 
-  const Vector3I gstart = vector_cast(region_.start);
-  const Vector3I gsize = vector_cast(region_.size);
+  const Vector3I gstart = vector_cast(region.start);
+  const Vector3I gsize = vector_cast(region.size);
 
   DkShape shape;
 
   // Итерация по дрейфово-кинетическому хранилищу dk_curr_storage
-  const auto& dk_storage = dk_particles_.get_dk_curr_storage();
+  const auto& dk_storage = dk_particles.get_dk_curr_storage();
 
 #pragma omp parallel for private(shape)
   for (PetscInt g = 0; g < size.elements_product(); ++g) {
@@ -123,7 +123,7 @@ PetscErrorCode DkDistributionMoment::collect()
 
       ::Point dummy_point(point.r, point.p);
 
-      std::vector<PetscReal> moments = moment_(particles_, dummy_point);
+      std::vector<PetscReal> moments = moment(particles, dummy_point);
       auto msize = static_cast<PetscInt>(moments.size());
 
       for (PetscInt i = 0; i < shape.shm; ++i) {
@@ -131,7 +131,7 @@ PetscErrorCode DkDistributionMoment::collect()
         PetscInt g_y = shape.start[Y] + (i / shape.shw) % shape.shw;
         PetscInt g_z = shape.start[Z] + (i / shape.shw) / shape.shw;
 
-        PetscReal si = shape.cache[i] * particles_.n_Np(dummy_point);;
+        PetscReal si = shape.cache[i] * particles.n_Np(dummy_point);
 
         for (PetscInt j = 0; j < msize; ++j) {
           PetscReal mj = moments[j] * si;
@@ -142,13 +142,13 @@ PetscErrorCode DkDistributionMoment::collect()
       }
     }
   }
-  PetscCall(DMDAVecRestoreArrayDOFWrite(da_, local_, &arr));
-  PetscCall(DMLocalToGlobal(da_, local_, ADD_VALUES, field_));
+  PetscCall(DMDAVecRestoreArrayDOFWrite(da, field_loc, &arr));
+  PetscCall(DMLocalToGlobal(da, field_loc, ADD_VALUES, field));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
 PointByFieldTrace::PointByFieldTrace(const std::string& out_dir, const Particles& particles, PetscInt skip)
-  : TableDiagnostic(out_dir + "/temporal/particle_trace.txt"), skip(skip), particles_(particles)
+  : TableDiagnostic(out_dir + "/temporal/particle_trace.txt"), skip(skip), particles(particles)
 {
 }
 
@@ -178,7 +178,7 @@ PetscErrorCode PointByFieldTrace::add_columns(PetscInt t)
 {
   PetscFunctionBeginUser;
 
-  const auto& storage = particles_.get_dk_curr_storage();
+  const auto& storage = particles.get_dk_curr_storage();
   bool found = false;
   PointByField point;
 
@@ -444,6 +444,8 @@ PetscErrorCode EnergyConservation::add_columns(PetscInt t)
   PetscCall(DMGetGlobalVector(charge_da, &diff));
   PetscCall(DMGetGlobalVector(charge_da, &sum));
   PetscCall(VecSet(sum, 0.0));
+
+  // add_separator();
 
   PetscInt i = 0;
   for (; i < (PetscInt)charge_fields.size(); ++i) {

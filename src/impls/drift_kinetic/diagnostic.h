@@ -21,7 +21,7 @@ protected:
 
   PetscErrorCode collect() override;
 
-  const Particles& dk_particles_;
+  const Particles& dk_particles;
 };
 
 class PointByFieldTrace : public TableDiagnostic {
@@ -35,7 +35,7 @@ public:
 
 private:
   PetscInt skip;
-  const Particles& particles_;
+  const Particles& particles;
 
   PetscErrorCode add_columns(PetscInt t) override;
 };

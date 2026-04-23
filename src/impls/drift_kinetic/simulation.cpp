@@ -337,11 +337,4 @@ PetscErrorCode Simulation::to_snes(Vec vE, Vec vB, Vec v)
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
-Vec Simulation::get_named_vector(std::string_view name) const
-{
-  if (name == "M") return M;
-
-  return interfaces::Simulation::get_named_vector(name);
-}
-
 }  // namespace drift_kinetic

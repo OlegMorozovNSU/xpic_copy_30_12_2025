@@ -16,8 +16,6 @@ public:
       "\nStructure of the SetMagneticField / SetElectricField command description:\n"
       "{\n"
       "  \"command\": \"SetMagneticField\" | \"SetElectricField\", -- Name of the command.\n"
-      "  \"field\": \"B0\", -- Name of the field to be set (optional for SetElectricField).\n"
-      "  \"field_axpy\": \"B\", -- Name of the field to add target field to (optional).\n"
       "  \"setter\": { -- Field setter description.\n"
       "    \"name\": \"Name\", -- Setter name, one of the following:\n"
       "                        SetUniformField, SetCoilsField, SetCosineField.\n"

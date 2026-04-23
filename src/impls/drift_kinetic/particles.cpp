@@ -2,7 +2,7 @@
 #include "src/algorithms/drift_kinetic_push.h"
 #include "src/algorithms/implicit_drift_kinetic.h"
 #include "src/impls/drift_kinetic/simulation.h"
-#include "src/impls/eccapfim/cell_traversal.h"
+#include "src/impls/eccapfim/particles.h" // for `cell_traversal`
 #include "src/utils/geometries.h"
 #include "src/utils/utils.h"
 
