@@ -87,6 +87,7 @@ PetscErrorCode FieldViewZAvg::calculate()
       continue;
 
     for (PetscInt c = 0; c < 3; c++) {
+#pragma omp atomic update
       avg_arr[0][vg[Y]][vg[X]][c] +=
         arr[vg[Z]][vg[Y]][vg[X]][c] / (PetscReal)geom_nz;
     }
