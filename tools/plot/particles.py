@@ -18,8 +18,8 @@ def read(file_t, c, cd):
         raw = np.reshape(raw, data_shape)
     return raw[:,:,c]
 
-def read_J(c): return lambda t: read(f"{const.in_dir}/{s}/J_zavg/{str(t // const.Ndts).zfill(4)}", c, 3)
-def read_rho(): return lambda t: read(f"{const.in_dir}/{s}/rho_zavg/{str(t // const.Ndts).zfill(4)}", 0, 1) * (1 if s == "ions" else -1)
+def read_J(c): return lambda t: read(f"{const.in_dir}/{s}/J_ZAvg/{str(t // const.Ndts).zfill(4)}", c, 3)
+def read_rho(): return lambda t: read(f"{const.in_dir}/{s}/rho_ZAvg/{str(t // const.Ndts).zfill(4)}", 0, 1) * (1 if s == "ions" else -1)
 
 vmap = np.array([-0.02, +0.02])
 vmap_s = {
@@ -69,4 +69,4 @@ for s in const.sorts:
             plot.axis.plot([const.min_x, const.min_x], [const.min_y, const.max_y], ls="--", c="black")
             plot.axis.plot([const.max_x, const.max_x], [const.min_y, const.max_y], ls="--", c="black")
 
-    process_plots(fig, f"info_{s}", time_wpe, plots[:,0], callback)
+    process_plots(fig, f"info_{s}", time_tau, plots[:,0], callback)

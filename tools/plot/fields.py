@@ -25,8 +25,8 @@ def read(file_t, c):
         raw = np.reshape(raw, data_shape)
     return raw[:,:,c]
 
-def read_E(c): return lambda t: read(f"{const.in_dir}/E_zavg/{str(t // const.Ndts).zfill(4)}", c)
-def read_B(c): return lambda t: read(f"{const.in_dir}/B_zavg/{str(t // const.Ndts).zfill(4)}", c)
+def read_E(c): return lambda t: read(f"{const.in_dir}/E_ZAvg/{str(t // const.Ndts).zfill(4)}", c)
+def read_B(c): return lambda t: read(f"{const.in_dir}/B_ZAvg/{str(t // const.Ndts).zfill(4)}", c)
 
 # 2a) Location of plot (`i`, `j` indices)
 # 2b) Colormap boundaries
