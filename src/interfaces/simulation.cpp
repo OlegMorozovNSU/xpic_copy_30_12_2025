@@ -141,6 +141,7 @@ Vec Simulation::get_named_vector(std::string_view name) const
     {"E", E},
     {"B", B},
     {"B0", B0},
+    {"J", J},
   };
   return map.at(name);
 }

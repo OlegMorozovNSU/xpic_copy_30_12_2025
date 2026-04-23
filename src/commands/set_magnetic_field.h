@@ -5,6 +5,7 @@
 
 #include "src/pch.h"
 #include "src/interfaces/command.h"
+#include "src/utils/geometries.h"
 #include "src/utils/vector3.h"
 
 class SetMagneticField : public interfaces::Command {
@@ -23,6 +24,26 @@ struct SetUniformField {
   SetUniformField(const Vector3R& value);
   PetscErrorCode operator()(Vec vec);
   Vector3R value_;
+};
+
+struct SetCosineField {
+  SetCosineField(
+    BoxGeometry box, const Vector3R& amplitude, const Vector3R& wave_number);
+  PetscErrorCode operator()(Vec vec);
+
+  BoxGeometry box;
+  Vector3R amplitude;
+  Vector3R wave_number;
+};
+
+struct SetGeneralCosineField {
+  SetGeneralCosineField(
+    BoxGeometry box, const Vector3R& amplitude, const Vector3R& wave_number);
+  PetscErrorCode operator()(Vec vec);
+
+  BoxGeometry box;
+  Vector3R amplitude;
+  Vector3R wave_number;
 };
 
 struct SetCoilsField {

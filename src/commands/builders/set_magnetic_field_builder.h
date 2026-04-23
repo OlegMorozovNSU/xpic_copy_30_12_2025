@@ -13,14 +13,14 @@ public:
   std::string_view usage_message() const override
   {
     std::string_view help =
-      "\nStructure of the SetMagneticField command description:\n"
+      "\nStructure of the SetMagneticField / SetElectricField command description:\n"
       "{\n"
-      "  \"command\": \"SetMagneticField\", -- Name of the command, constant.\n"
-      "  \"field\": \"B0\", -- Name of the field to be set (from Simulation).\n"
-      "  \"field_axpy\": \"B\", -- Name of the field to add B0 to (optional).\n"
-      "  \"setter\": { -- Magnetic field setter description.\n"
+      "  \"command\": \"SetMagneticField\" | \"SetElectricField\", -- Name of the command.\n"
+      "  \"field\": \"B0\", -- Name of the field to be set (optional for SetElectricField).\n"
+      "  \"field_axpy\": \"B\", -- Name of the field to add target field to (optional).\n"
+      "  \"setter\": { -- Field setter description.\n"
       "    \"name\": \"Name\", -- Setter name, one of the following:\n"
-      "                        SetUniformField, SetCoilsField.\n"
+      "                        SetUniformField, SetCoilsField, SetCosineField.\n"
       "    Specific description of a setter chosen by \"Name\"...\n"
       "  }\n"
       "}\n";

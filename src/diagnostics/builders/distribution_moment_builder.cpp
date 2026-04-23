@@ -3,6 +3,8 @@
 #include "src/diagnostics/distribution_moment.h"
 #include "src/utils/utils.h"
 #include "src/utils/vector_utils.h"
+#include "src/impls/drift_kinetic/particles.h"
+#include "src/impls/drift_kinetic/diagnostic.h"
 
 DistributionMomentBuilder::DistributionMomentBuilder(
   interfaces::Simulation& simulation, std::vector<Diagnostic_up>& diagnostics)
@@ -57,9 +59,18 @@ PetscErrorCode DistributionMomentBuilder::build(const Configuration::json_t& inf
   std::string res_dir =
     CONFIG().out_dir + "/" + particles + "/" + moment + suffix;
 
-  auto&& diagnostic = DistributionMoment::create( //
-    res_dir, simulation_.get_named_particles(particles),
-    moment_from_string(moment), region);
+  std::unique_ptr<DistributionMoment> diagnostic;
+
+  auto* dk_particles = dynamic_cast<const drift_kinetic::Particles*>(&simulation_.get_named_particles(particles));
+
+  if (dk_particles != nullptr) {
+    diagnostic = drift_kinetic::DkDistributionMoment::create(
+      res_dir, *dk_particles, moment_from_string(moment), region);
+  } else {
+    diagnostic = DistributionMoment::create(
+      res_dir, simulation_.get_named_particles(particles),
+      moment_from_string(moment), region);
+  }
 
   if (!diagnostic)
     PetscFunctionReturn(PETSC_SUCCESS);

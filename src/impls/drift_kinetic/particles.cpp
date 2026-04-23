@@ -1,79 +1,12 @@
 #include "particles.h"
 #include "src/algorithms/drift_kinetic_push.h"
-#include "src/algorithms/drift_kinetic_implicit.h"
+#include "src/algorithms/implicit_drift_kinetic.h"
 #include "src/impls/drift_kinetic/simulation.h"
 #include "src/impls/eccapfim/cell_traversal.h"
 #include "src/utils/geometries.h"
 #include "src/utils/utils.h"
 
 namespace drift_kinetic {
-namespace {
-
-constexpr PetscReal periodic_split_eps = 1e-12;
-
-struct CutBounds {
-  Vector3R lower;
-  Vector3R upper;
-};
-
-std::vector<std::vector<Vector3R>> split_coords_by_periodic_bounds( //
-  const std::vector<Vector3R>& coords,                              //
-  const CutBounds& cut_bounds,                                       //
-  const DMBoundaryType bounds[3])
-{
-  std::vector<std::vector<Vector3R>> chunks;
-  if (coords.empty())
-    return chunks;
-
-  const Vector3R& cut_lower = cut_bounds.lower;
-  const Vector3R& cut_upper = cut_bounds.upper;
-
-  auto is_periodic = [&](Axis axis) {
-    return bounds[axis] == DM_BOUNDARY_PERIODIC;
-  };
-
-  Vector3R shift{};
-  chunks.push_back({coords.front()});
-
-  for (PetscInt i = 1; i < (PetscInt)coords.size(); ++i) {
-    const auto& raw = coords[i];
-    Vector3R curr = raw + shift;
-    Vector3R delta{};
-    bool crossed = false;
-
-    for (Axis axis : {X, Y, Z}) {
-      if (!is_periodic(axis))
-        continue;
-
-      while (curr[axis] > cut_upper[axis] + periodic_split_eps ||
-             curr[axis] < cut_lower[axis] - periodic_split_eps) {
-        PointByField wrapped(curr, 0.0, 0.0, 0.0);
-        const PetscReal before = wrapped.r[axis];
-        g_bound_periodic(wrapped, axis);
-        const PetscReal after = wrapped.r[axis];
-        if (std::abs(after - before) <= periodic_split_eps)
-          break;
-
-        delta[axis] += after - before;
-        curr[axis] = after;
-        crossed = true;
-      }
-    }
-
-    if (crossed) {
-      const Vector3R prev_shifted = chunks.back().back() + delta;
-      shift += delta;
-      chunks.push_back({prev_shifted, raw + shift});
-      continue;
-    }
-
-    chunks.back().push_back(curr);
-  }
-
-  return chunks;
-}
-
-}  // namespace
 
 Particles::Particles(Simulation& simulation, const SortParameters& parameters)
   : interfaces::Particles(simulation.world, parameters),
@@ -90,10 +23,8 @@ Particles::Particles(Simulation& simulation, const SortParameters& parameters)
 
   PetscCallAbort(PETSC_COMM_WORLD, DMCreateGlobalVector(da, &J));
   PetscCallAbort(PETSC_COMM_WORLD, DMCreateGlobalVector(da, &M));
-  PetscCallAbort(PETSC_COMM_WORLD, DMCreateGlobalVector(da, &Mn));
   PetscCallAbort(PETSC_COMM_WORLD, DMCreateLocalVector(da, &J_loc));
   PetscCallAbort(PETSC_COMM_WORLD, DMCreateLocalVector(da, &M_loc));
-  PetscCallAbort(PETSC_COMM_WORLD, DMCreateLocalVector(da, &Mn_loc));
 }
 
 PetscErrorCode Particles::finalize()
@@ -101,10 +32,8 @@ PetscErrorCode Particles::finalize()
   PetscFunctionBeginUser;
   PetscCall(VecDestroy(&J));
   PetscCall(VecDestroy(&M));
-  PetscCall(VecDestroy(&Mn));
   PetscCall(VecDestroy(&J_loc));
   PetscCall(VecDestroy(&M_loc));
-  PetscCall(VecDestroy(&Mn_loc));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -114,8 +43,7 @@ PetscErrorCode Particles::initialize_point_by_field(const Arr B_arr)
   PetscFunctionBeginUser;
   const PetscReal qm = parameters.q / parameters.m;
   const PetscReal mp = parameters.m;
-  DriftKineticEsirkepov esirkepov(nullptr, B_arr, nullptr, nullptr);
-  PetscCall(esirkepov.set_bounds(world.gstart, world.gsize));
+  drift_kinetic::DriftKineticEsirkepov esirkepov(B_arr, nullptr);
 
   for (PetscInt g = 0; g < world.size.elements_product(); ++g) {
     auto& cell = storage[g];
@@ -125,10 +53,10 @@ PetscErrorCode Particles::initialize_point_by_field(const Arr B_arr)
     auto& dk_cell = dk_curr_storage[g];
     dk_cell.clear();
 
+    PetscInt i = 0;
     for (const auto& point : cell) {
       Vector3R B_p{};
       PetscCall(esirkepov.interpolate_B(B_p, point.r));
-
       dk_cell.emplace_back(point, B_p, mp, qm);
     }
   }
@@ -154,236 +82,63 @@ PetscReal Particles::get_average_iteration_number() const
   return avgit;
 }
 
-PetscReal Particles::get_average_number_of_traversed_cells() const
+PetscInt Particles::get_max_iteration_number() const
 {
-  return avgcell;
+  return maxit;
 }
-
 
 PetscErrorCode Particles::form_iteration()
 {
   PetscFunctionBeginUser;
   PetscCall(DMDAVecGetArrayWrite(da, J_loc, &J_arr));
   PetscCall(DMDAVecGetArrayWrite(da, M_loc, &M_arr));
-  PetscCall(DMDAVecGetArrayWrite(da, Mn_loc, &Mn_arr));
-  PetscCall(DMDAVecGetArrayRead(da, simulation_.dBdx_loc, &simulation_.dBdx_arr));
-  PetscCall(DMDAVecGetArrayRead(da, simulation_.dBdy_loc, &simulation_.dBdy_arr));
-  PetscCall(DMDAVecGetArrayRead(da, simulation_.dBdz_loc, &simulation_.dBdz_arr));
 
   avgit = 0.0;
-  avgcell = 0.0;
+  maxit = 0;
 
   PetscReal q = parameters.q;
   PetscReal m = parameters.m;
 
-  const CutBounds cut_bounds{
-    {(world.start[X] - 0.5) * dx, (world.start[Y] - 0.5) * dy, (world.start[Z] - 0.5) * dz},
-    {(world.end[X] + 0.5) * dx, (world.end[Y] + 0.5) * dy, (world.end[Z] + 0.5) * dz},
-  };
-
-  static const PetscReal max = std::numeric_limits<double>::max();
-
-  auto process_bound = [&](PetscReal vh, PetscReal x, Axis axis) {
-    if (vh > 0)
-      return (cut_bounds.upper[axis] - x) / vh;
-    else if (vh < 0)
-      return (cut_bounds.lower[axis] - x) / vh;
-    else
-      return max;
-  };
-
-  DriftKineticEsirkepov util(E_arr, B_arr, J_arr, M_arr);
-  DriftKineticEsirkepov util_temp(nullptr, B_arr, nullptr, Mn_arr);
-  util.set_dBidrj_precomputed(simulation_.dBdx_arr, simulation_.dBdy_arr, simulation_.dBdz_arr);
-  //PetscCall(util.set_bounds(world.gstart, world.gsize));
   const PetscReal inv_size = size > 0 ? 1.0 / static_cast<PetscReal>(size) : 0.0;
 
-#pragma omp parallel for reduction(+ : VgradB, avgit, avgcell)
-  for (PetscInt g = 0; g < (PetscInt)dk_curr_storage.size(); ++g) {
-    const auto& prev_cell = dk_prev_storage[g];
+#pragma omp parallel for reduction(+ : avgit) reduction(max : maxit)
+    for (PetscInt g = 0; g < (PetscInt)dk_curr_storage.size(); ++g) {
+      const auto& prev_cell = dk_prev_storage[g];
 
-    PetscInt i = 0;
-    for (auto& curr : dk_curr_storage[g]) {
-      auto prev(prev_cell[i]);
+      PetscInt i = 0;
+      for (auto& curr : dk_curr_storage[g]) {
+        auto prev(prev_cell[i]);
 
-      /// @todo this part should reuse the logic from:
-      /// tests/drift_kinetic_push/drift_kinetic_push.h:620 implicit_test_utils::interpolation_test()
-      DriftKineticPush push(q / m, m);
-      auto call_abort = [&](PetscErrorCode ierr) {
-        if (ierr)
-          PetscCallAbort(PETSC_COMM_WORLD, ierr);
-      };
-      push.set_fields_callback(
-        [&](const Vector3R& r0, const Vector3R& rn, Vector3R& E_p, Vector3R& B_p,
-          Vector3R& gradB_p) {
-          E_p = {};
-          B_p = {};
-          gradB_p = {};
-          Vector3R Es_p, Bs_p, gradBs_p;
+        DriftKineticPush push(q / m, m);
+        drift_kinetic::DriftKineticEsirkepov util_local(E_arr, B0_arr, B_arr, J_arr, M_arr);
 
-          Vector3R pos = (rn - r0);
-          auto coords = cell_traversal(rn, r0);
-          auto chunked_coords = split_coords_by_periodic_bounds(coords, cut_bounds, world.bounds);
+        push.set_fields_callback(
+          [&](const Vector3R& r0, const Vector3R& rn, Vector3R& E_p, Vector3R& B_p,
+            Vector3R& gradB_p) { util_local.interpolate(E_p, B_p, gradB_p, rn, r0); });
 
-          PetscReal path = 0.0;
-          PetscInt segments = 0;
-          pos = {};
+        push.set_B_callback(
+          [&](const Vector3R& r0, const Vector3R& rn, Vector3R& B0_p, Vector3R& meanB_p,
+            Vector3R& Bn_p) { util_local.interpolate_B(B0_p, meanB_p, Bn_p, rn, r0); });
 
-          for (const auto& chunk : chunked_coords) {
-            for (PetscInt s = 1; s < (PetscInt)chunk.size(); ++s) {
-              auto ds = chunk[s] - chunk[s - 1];
-              path += ds.length();
-              pos += ds;
-              ++segments;
-            }
-          }
+        push.process(dt, curr, prev);
 
-          if (segments <= 0) {
-            segments = 1;
-          }
+        avgit +=  (PetscReal)push.get_iteration_number() * inv_size;
+        maxit = std::max(maxit, (PetscInt)push.get_iteration_number());
 
-          pos[X] = pos[X] != 0 ? pos[X] / dx : (PetscReal)segments;
-          pos[Y] = pos[Y] != 0 ? pos[Y] / dy : (PetscReal)segments;
-          pos[Z] = pos[Z] != 0 ? pos[Z] / dz : (PetscReal)segments;
+        const PetscReal a0 = qn_Np(curr);
+        const PetscReal b0 = curr.mu_p * n_Np(curr);
+        const Vector3R Vph = (curr.r - prev.r) / dt;
 
-          for (const auto& chunk : chunked_coords) {
-            for (PetscInt s = 1; s < (PetscInt)chunk.size(); ++s) {
-              auto&& rs0 = chunk[s - 1];
-              auto&& rsn = chunk[s - 0];
-              call_abort(util.interpolate(Es_p, Bs_p, gradBs_p, rsn, rs0));
+        util_local.decomposition(curr.r, prev.r, Vph, a0, b0);
 
-              PetscReal beta = path > 0 ? (rsn - rs0).length() / path : 1.0;
-              E_p += Es_p * beta;
-              B_p += Bs_p * beta;
-              gradB_p += gradBs_p.elementwise_division(pos);
-            }
-          }
-        });
-      
-      //PetscReal v = std::sqrt((POW2(curr.p_parallel) + POW2(curr.p_perp)));
-      Vector3R Vph;
-      PetscReal dtau = dt;
-#if 0
-      LOG("v_th = {}", v);
-      LOG("v_drift = ({}, {}, {})", Vph.x(), Vph.y(), Vph.z());
-#endif
-
-      //for (PetscReal dtau = 0.0, tau = 0.0; tau < dt; tau += dtau) {
-      //  PetscReal dtx = process_bound(Vph.x(), curr.x(), X);
-      //  PetscReal dty = process_bound(Vph.y(), curr.y(), Y);
-      //  PetscReal dtz = process_bound(Vph.z(), curr.z(), Z);
-//
-      //  dtau = std::min({dt - tau, dtx, dty, dtz});
-
-        //LOG("dt - tau, dtx, dty, dtz = {}, {}, {}, {}", dt - tau, dtx, dty, dtz);
-
-        push.process(dtau, curr, prev);
-        avgit += (PetscReal)(push.get_iteration_number() + 1) * inv_size;
-        Vph = (curr.r - prev.r) / dtau;
-
-        //LOG("Vph.length(), v = {}, {}", Vph.length(), v);
-
-        auto coords = cell_traversal(curr.r, prev.r);
-        auto chunked_coords = split_coords_by_periodic_bounds(coords, cut_bounds, world.bounds);
-
-        PetscReal path = 0.0;
-        PetscInt segments = 0;
-        for (const auto& chunk : chunked_coords) {
-          segments += std::max<PetscInt>(0, (PetscInt)chunk.size() - 1);
-          for (PetscInt s = 1; s < (PetscInt)chunk.size(); ++s)
-            path += (chunk[s] - chunk[s - 1]).length();
-        }
-        avgcell += (PetscReal)segments * inv_size;
-
-        PetscReal a0 = qn_Np(curr);
-        PetscReal b0 = curr.mu_p * n_Np(curr);
-
-        for (const auto& chunk : chunked_coords) {
-          for (PetscInt s = 1; s < (PetscInt)chunk.size(); ++s) {
-            auto&& rs0 = chunk[s - 1];
-            auto&& rsn = chunk[s - 0];
-            PetscReal a = a0 * (rsn - rs0).length() / path;
-            call_abort(util.decomposition_J(rsn, rs0, Vph, a));
-
-            PetscReal b = b0 * (rsn - rs0).length() / path;
-            call_abort(util.decomposition_M(rsn, b));
-            call_abort(util_temp.decomposition_M(rs0, b));
-          }
-        }
-        //correct_coordinates(curr);
-        //prev = curr;
-        VgradB += push.get_VgradB(curr);
-      ++i;
+        ++i;
+      }
     }
-  }
 
   PetscCall(DMDAVecRestoreArrayWrite(da, J_loc, &J_arr));
   PetscCall(DMDAVecRestoreArrayWrite(da, M_loc, &M_arr));
-  PetscCall(DMDAVecRestoreArrayWrite(da, Mn_loc, &Mn_arr));
-  PetscCall(DMDAVecRestoreArrayRead(da, simulation_.dBdx_loc, &simulation_.dBdx_arr));
-  PetscCall(DMDAVecRestoreArrayRead(da, simulation_.dBdy_loc, &simulation_.dBdy_arr));
-  PetscCall(DMDAVecRestoreArrayRead(da, simulation_.dBdz_loc, &simulation_.dBdz_arr));
   PetscCall(DMLocalToGlobal(da, J_loc, ADD_VALUES, J));
   PetscCall(DMLocalToGlobal(da, M_loc, ADD_VALUES, M));
-  PetscCall(DMLocalToGlobal(da, Mn_loc, ADD_VALUES, Mn));
-  PetscFunctionReturn(PETSC_SUCCESS);
-}
-
-PetscErrorCode Particles::after_iteration() {
-  PetscFunctionBeginUser;
-
-  PetscReal q = parameters.q;
-  PetscReal m = parameters.m;
-  const CutBounds cut_bounds{
-    {(world.start[X] - 0.5) * dx, (world.start[Y] - 0.5) * dy, (world.start[Z] - 0.5) * dz},
-    {(world.end[X] + 0.5) * dx, (world.end[Y] + 0.5) * dy, (world.end[Z] + 0.5) * dz},
-  };
-
-  DriftKineticEsirkepov util(nullptr, B_arr, nullptr, nullptr);
-
-#pragma omp parallel for
-  for (PetscInt g = 0; g < (PetscInt)dk_curr_storage.size(); ++g) {
-    const auto& prev_cell = dk_prev_storage[g];
-
-    PetscInt i = 0;
-    for (auto& curr : dk_curr_storage[g]) {
-      auto prev(prev_cell[i]);
-
-      DriftKineticPush push(q / m, m);
-
-      push.set_fields_callback(
-        [&](const Vector3R& r0, const Vector3R& rn, Vector3R& E_p, Vector3R& B_p,
-          Vector3R& gradB_p) {
-          E_p = {};
-          B_p = {};
-          gradB_p = {};
-          Vector3R Bs_p;
-
-          auto coords = cell_traversal(rn, r0);
-          auto chunked_coords = split_coords_by_periodic_bounds(coords, cut_bounds, world.bounds);
-
-          PetscReal path = 0.0;
-          for (const auto& chunk : chunked_coords) {
-            for (PetscInt s = 1; s < (PetscInt)chunk.size(); ++s)
-              path += (chunk[s] - chunk[s - 1]).length();
-          }
-
-          for (const auto& chunk : chunked_coords) {
-            for (PetscInt s = 1; s < (PetscInt)chunk.size(); ++s) {
-              auto&& rs0 = chunk[s - 1];
-              auto&& rsn = chunk[s - 0];
-              util.interpolate_B(Bs_p, rsn);
-
-              PetscReal beta = path > 0 ? (rsn - rs0).length() / path : 1.0;
-              B_p += Bs_p * beta;
-            }
-          }
-        });
-
-      push.update_v_perp(curr, prev);
-      i++;
-    }
-  }
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
@@ -408,7 +163,7 @@ PetscErrorCode Particles::sync_dk_curr_storage()
   PetscCall(DMGlobalToLocal(simulation_.da, simulation_.B, INSERT_VALUES, simulation_.B_loc));
   PetscCall(DMDAVecGetArrayRead(simulation_.da, simulation_.B_loc, &simulation_.B_arr));
 
-  DriftKineticEsirkepov esirkepov(nullptr, simulation_.B_arr, nullptr, nullptr);
+  drift_kinetic::DriftKineticEsirkepov esirkepov(simulation_.B_arr, nullptr);
 
   for (PetscInt g = 0; g < world.size.elements_product(); ++g) {
     auto& cell = storage[g];
@@ -538,9 +293,9 @@ PetscErrorCode Particles::update_cells_mpi()
       }
 
       PetscInt i = indexing::petsc_index( //
-        get_index(ng, X, world),           //
-        get_index(ng, Y, world),           //
-        get_index(ng, Z, world),           //
+        get_index(ng, X, world),          //
+        get_index(ng, Y, world),          //
+        get_index(ng, Z, world),          //
         0, 3, 3, 3, 1);
 
       if (i == center_index) {

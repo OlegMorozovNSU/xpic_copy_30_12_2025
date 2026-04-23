@@ -30,11 +30,14 @@ int main(int argc, char** argv)
 void overwrite_config()
 {
   dx = 10.;
-  geom_nx = 7;
+  geom_nx = 50;
   geom_x = geom_nx * dx;
 
-  dt = 1.;
-  geom_nt = 10000;
+  geom_nz = 10;
+  geom_z = geom_nz * dx;
+
+  dt = 10;
+  geom_nt = 1;
   geom_t = geom_nt * dt;
 
   Configuration::overwrite({
@@ -45,7 +48,7 @@ void overwrite_config()
       {
         {"x", geom_x},
         {"y", geom_x},
-        {"z", geom_x},
+        {"z", geom_z},
         {"t", geom_t},
         {"dx", dx},
         {"dy", dx},
@@ -61,11 +64,19 @@ void overwrite_config()
       "Particles",
       {{
         {"sort_name", "electrons"},
-        {"Np", 8},
+        {"Np", 500},
         {"n", +1.0},
         {"q", -1.0},
         {"m", +1.0},
-        {"T", +0.1},
+        {"T", +2.5},
+      },
+      {
+        {"sort_name", "ions"},
+        {"Np", 500},
+        {"n", +1.0},
+        {"q", +1.0},
+        {"m", +1836.0},
+        {"T", +2.5},
       }},
     },
     {
@@ -86,8 +97,79 @@ void overwrite_config()
         {
           {"command", "SetParticles"},
           {"particles", "electrons"},
-          {"coordinate", {{"name", "CoordinateInBox"}, {"min", {20.0, 20.0, 20.0}}, {"max", {50.0, 50.0, 50.0}}}},
+          {"coordinate", {
+            {"name", "CoordinateInCylinder"},
+            {"center", {25.0, 25.0, 5.0}},
+            {"radius", 10.0},
+            {"height", 10.0}
+          }},
           {"momentum", {{"name", "MaxwellianMomentum"}, {"tov", true}}},
+        },
+        {
+          {"command", "SetParticles"},
+          {"particles", "ions"},
+          {"coordinate", {
+            {"name", "CoordinateInCylinder"},
+            {"center", {25.0, 25.0, 5.0}},
+            {"radius", 10.0},
+            {"height", 10.0}
+          }},
+          {"momentum", {{"name", "MaxwellianMomentum"}, {"tov", true}}},
+        },
+      },
+    },
+     {
+      "Diagnostics",
+  {
+    {
+      {"diagnostic", "FieldView"},
+      {"field", "B"},
+      {"region", {{"type", "2D"}, {"plane", "Y"}}},
+    },
+    {
+      {"diagnostic", "FieldView"},
+      {"field", "B"},
+      {"region", {{"type", "2D"}, {"plane", "Z"}}},
+    },
+    {
+      {"diagnostic", "FieldView"},
+      {"field", "E"},
+      {"region", {{"type", "2D"}, {"plane", "Y"}}},
+    },
+    {
+      {"diagnostic", "FieldView"},
+      {"field", "E"},
+      {"region", {{"type", "2D"}, {"plane", "Z"}}},
+    },
+    {
+      {"diagnostic", "FieldView"},
+      {"field", "J"},
+      {"region", {{"type", "2D"}, {"plane", "Z"}}},
+    },
+    {
+      {"diagnostic", "FieldView"},
+      {"field", "J"},
+      {"region", {{"type", "2D"}, {"plane", "Y"}}},
+    },
+    {
+      {"diagnostic", "FieldView"},
+      {"field", "M"},
+      {"region", {{"type", "2D"}, {"plane", "Z"}}},
+    },
+    {
+      {"diagnostic", "FieldView"},
+      {"field", "M"},
+      {"region", {{"type", "2D"}, {"plane", "Y"}}},
+    },
+        {
+          {"diagnostic", "DistributionMoment"},
+          {"particles", "electrons"},
+          {"moment", "density"},
+        },
+        {
+          {"diagnostic", "DistributionMoment"},
+          {"particles", "ions"},
+          {"moment", "density"},
         },
       },
     },

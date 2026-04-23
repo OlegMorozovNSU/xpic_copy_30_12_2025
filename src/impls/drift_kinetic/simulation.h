@@ -7,15 +7,16 @@
 #include "src/diagnostics/utils/table_diagnostic.h"
 #include "src/impls/drift_kinetic/particles.h"
 #include "src/utils/sync_clock.h"
+#include "src/impls/drift_kinetic/diagnostic.h"
 
 namespace drift_kinetic {
-
-class EnergyConservation;
 
 class Simulation : public interfaces::Simulation {
 public:
   Simulation() = default;
   PetscErrorCode finalize() override;
+
+  Vec get_named_vector(std::string_view name) const override;
 
   std::vector<std::shared_ptr<drift_kinetic::Particles>> particles_;
 
@@ -37,71 +38,35 @@ protected:
 
   PetscErrorCode form_current();
   PetscErrorCode form_function(Vec vf);
-  PetscErrorCode prepare_dBdr();
 
   PetscErrorCode from_snes(Vec v, Vec vE, Vec vB);
   PetscErrorCode to_snes(Vec vE, Vec vB, Vec v);
 
+
   Vec M;
-
-  Vec Mn;
-  PetscReal VgradB = 0.;
-
-  Vec dBdx;
-  Vec dBdx_loc;
-  Arr dBdx_arr;
-
-  Vec dBdy;
-  Vec dBdy_loc;
-  Arr dBdy_arr;
-
-  Vec dBdz;
-  Vec dBdz_loc;
-  Arr dBdz_arr;
 
   Vec B_hk;
   Vec E_hk;
 
+  Vec B0_loc;
+  Arr B0_arr;
+
   DM da_EB;
+
   Vec sol;
   SNES snes;
   PetscInt last_field_itnum = 0;
+  PetscLogDouble form_current_sum_sec = 0.0;
+  PetscLogDouble form_iteration_sum_sec = 0.0;
+  PetscInt form_current_calls = 0;
+  PetscInt form_iteration_calls = 0;
 
   Mat rotM;
 
   friend class EnergyConservation;
   friend class Particles;
   std::unique_ptr<EnergyConservation> energy_cons;
-};
-
-class EnergyConservation : public TableDiagnostic {
-public:
-  EnergyConservation(const Simulation& simulation);
-  PetscErrorCode diagnose(PetscInt t) override;
-  PetscErrorCode initialize() override;
-  PetscErrorCode finalize() override;
-  PetscErrorCode add_columns(PetscInt t) override;
-
-  const Simulation& simulation;
-  PetscReal w_E = 0, w_E0 = 0;
-  PetscReal w_B = 0, w_B0 = 0;
-  PetscReal dF = 0;
-  PetscReal a_EJ = 0;
-  PetscReal a_MB = 0, a_MB0 = 0;
-  PetscReal w_M = 0, w_Mn = 0;
-  PetscReal K0 = 0, K = 0;
-  bool initialized = false;
-
-private:
-  PetscErrorCode init_charge_conservation();
-  PetscErrorCode collect_charge_density(PetscInt sort_id);
-  PetscErrorCode collect_charge_densities();
-
-  DM charge_da = nullptr;
-  Mat divE = nullptr;
-  std::vector<Vec> charge_locals;
-  std::vector<Vec> charge_fields;
-  std::vector<Vec> current_densities;
+  std::unique_ptr<PointByFieldTrace> trace;
 };
 
 }  // namespace drift_kinetic

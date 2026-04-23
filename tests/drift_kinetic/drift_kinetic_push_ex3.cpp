@@ -5,10 +5,10 @@ static constexpr char help[] =
   "comparison between different pushers. Sweep in critical pitch angle\n"
   "fraction and pusher time step (in Omega * dt units) is added.\n";
 
-  using namespace gaussian_magnetic_mirror;
+using namespace gaussian_magnetic_mirror;
 
 PetscReal pitch_frac = 1.005;
-PetscReal Omega_dt = 0.1;
+PetscReal Omega_dt = 10;
 
 auto format(const char* push)
 {
@@ -35,7 +35,7 @@ int main(int argc, char** argv)
 
   PetscReal Omega = get_Bz(r0.z() - L);
   dt = Omega_dt / Omega;
-  geom_nt = 5000;
+  geom_nt = 50;
   diagnose_period = 1;
 
   Vector3R B{
@@ -81,11 +81,23 @@ int main(int argc, char** argv)
   DriftKineticPush dk_push;
   dk_push.set_qm(q / m);
   dk_push.set_mp(m);
-  dk_push.set_fields_callback(get_fields);
 
-  PointTrace b_d(__FILE__, format("boris"), b_p);
-  PointTrace cn_d(__FILE__, format("crank_nicolson"), cn_p);
-  PointByFieldTrace dk_d(__FILE__, format("drift_kinetic"), dk_p);
+  dk_push.set_fields_callback(
+    [&](const Vector3R& r0, const Vector3R& r1, Vector3R& E, Vector3R& B, Vector3R& dB) {
+      get_fields(r0, (r1 + r0) / 2, E, B, dB);
+    });
+
+  dk_push.set_B_callback(
+    [&](const Vector3R& r0, const Vector3R& r1, Vector3R& B0_p, Vector3R& meanB_p, Vector3R& Bn_p) {
+      Vector3R E_dummy, dB_dummy;
+      get_fields({}, r0, E_dummy, B0_p, dB_dummy);
+      get_fields({}, 0.5 * (r0 + r1), E_dummy, meanB_p, dB_dummy);
+      get_fields({}, r1, E_dummy, Bn_p, dB_dummy);
+    });
+
+  PointTrace b_d(__FILE__, format("Boris"), b_p);
+  PointTrace cn_d(__FILE__, format("CN"), cn_p);
+  PointByFieldTrace dk_d(__FILE__, format("DK"), dk_p);
 
   for (PetscInt t = 0; t <= geom_nt; ++t) {
     Vector3R E_p, B_p;

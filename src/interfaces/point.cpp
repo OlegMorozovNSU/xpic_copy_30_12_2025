@@ -28,9 +28,7 @@ void g_bound_periodic(Point& point, Axis axis)
 void g_bound_periodic(PointByField& point, Axis axis)
 {
   PetscReal& s = point.r[axis];
-
+  s = std::fmod(s, Geom[axis]);
   if (s < 0.0)
-    s = Geom[axis] - (0.0 - s);
-  else if (s > Geom[axis])
-    s = 0.0 + (s - Geom[axis]);
+    s += Geom[axis];
 }

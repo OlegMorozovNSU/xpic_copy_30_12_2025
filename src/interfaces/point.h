@@ -36,6 +36,7 @@ struct Point {
 
 struct PointByField {
   Vector3R r;
+  Vector3R p;
   PetscReal p_parallel;
   /// @todo del p_perp or mu_p
   PetscReal p_perp;
@@ -46,16 +47,14 @@ struct PointByField {
   PointByField(
     const Vector3R& r, PetscReal p_perp, PetscReal p_parallel, PetscReal mu_p)
     : r(r), p_parallel(p_parallel), p_perp(p_perp), mu_p(mu_p)
-  {
-  }
+  {}
 
   PointByField(const Point& point, const Vector3R& Bp, PetscReal mp, PetscReal qm)
     : r(point.r + point.p.cross(Bp.normalized()) / (qm * Bp.length())),
-      p_parallel(point.p.parallel_to(Bp).length()),
+      p_parallel(point.p.dot(Bp.normalized())),
       p_perp(point.p.transverse_to(Bp).length()),
       mu_p(mp * p_perp * p_perp / (2.0 * Bp.length()))
-  {
-  }
+  {}
 
   // clang-format off: access modifiers
   PetscReal& x() { return r.x(); }

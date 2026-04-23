@@ -12,30 +12,25 @@ class Simulation;
 class Particles : public interfaces::Particles {
 public:
   Particles(Simulation& simulation, const SortParameters& parameters);
+  PetscErrorCode initialize_point_by_field(const Arr B_arr);
   PetscErrorCode finalize() override;
+
   PetscErrorCode sync_dk_curr_storage();
   PetscErrorCode prepare_storage();
   PetscErrorCode form_iteration();
-  PetscErrorCode after_iteration();
-  PetscErrorCode initialize_point_by_field(const Arr B_arr);
+
   PetscReal kinetic_energy_local() const;
   PetscReal get_average_iteration_number() const;
-  PetscReal get_average_number_of_traversed_cells() const;
+  PetscInt get_max_iteration_number() const;
   const std::vector<std::list<PointByField>>& get_dk_curr_storage() const
   {
     return dk_curr_storage;
   }
 
-
   Vec M;
   Vec M_loc;
   Arr M_arr;
-
-  Vec Mn;
-  Vec Mn_loc;
-  Arr Mn_arr;
-
-  PetscReal VgradB;
+  Arr B0_arr;
 
 protected:
   PetscReal n_Np(const PointByField& point) const;
@@ -47,7 +42,7 @@ protected:
   std::vector<std::vector<PointByField>> dk_prev_storage;
   PetscInt size = 0;
   PetscReal avgit = 0.0;
-  PetscReal avgcell = 0.0;
+  PetscInt maxit = 0;
   Simulation& simulation_;
 };
 

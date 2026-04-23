@@ -43,7 +43,6 @@ Vector3R CoordinateOnAnnulus::operator()()
   };
 }
 
-
 Vector3R PreciseMomentum::operator()(const Vector3R& /* coordinate */)
 {
   return value;

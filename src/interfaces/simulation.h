@@ -61,7 +61,7 @@ public:
   PetscErrorCode calculate();
   virtual PetscErrorCode finalize();
 
-  Vec get_named_vector(std::string_view name) const;
+  virtual Vec get_named_vector(std::string_view name) const;
   Particles& get_named_particles(std::string_view name);
 
 protected:

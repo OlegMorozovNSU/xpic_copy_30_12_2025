@@ -31,7 +31,6 @@ struct CoordinateOnAnnulus {
   AnnulusGeometry ann;
 };
 
-
 struct PreciseMomentum {
   Vector3R operator()(const Vector3R& coordinate);
   Vector3R value;
@@ -52,7 +51,6 @@ struct MaxwellCosinePerturbation {
   Vector3R a;
   Vector3R m;
 };
-
 
 struct AngularMomentum {
   Vector3R operator()(const Vector3R& coordinate);
