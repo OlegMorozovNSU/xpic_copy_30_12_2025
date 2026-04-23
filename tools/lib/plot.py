@@ -73,6 +73,10 @@ class PlotAxisInfo:
         ax = self.axis
         ax.tick_params(labelsize=ticksize, pad=8)
 
+        # TODO: Try to understand how to:
+        # 1) Set these parameters common to each plot
+        # 2) Modify them separatey for each plot
+
         for name, arg in self.args.items():
             if name == "title":
                 ax.set_title(arg, fontsize=titlesize, pad=0, y=1.05)
@@ -89,24 +93,13 @@ class PlotAxisInfo:
                 ax.set(**{name: arg})
 
 class PlotIm:
-    def __init__(
-        self,
-        view: FieldView,
-        vmap: tuple[float] = (None, None),
-        cmap: str = "plasma",
-        bounds: tuple[float] = None,
-        axis: plt.Axes = None):
-
-        self.view: FieldView = view
-        self.data: np.ndarray[np.float32] = None
-        self.bounds: tuple[float] = bounds
-
-        self.axis: plt.Axes = axis
+    def __init__(self, axis = None, vmap = (None, None), cmap = "plasma", bounds = None):
+        self.data = None
+        self.bounds = bounds
+        self.axis = axis
         self.info = PlotAxisInfo(axis)
-
         self.im: plt.AxesImage = None
         self.cbar: plt.Colorbar = None
-
         self.vmin: float = vmap[0]
         self.vmax: float = vmap[1]
         self.cmap: plt.Colormap = cmap
@@ -116,23 +109,13 @@ class PlotIm:
         self.info.axis = axis
 
     def draw(self, **kwargs):
-        self.axis.set_aspect(1.0)
-
-        if self.bounds == None:
-            self.bounds = (0, self.data.shape[1], 0, self.data.shape[0])
-
         self.im = self.axis.imshow(
             self.data,
             cmap=self.cmap,
             interpolation="gaussian",
             origin="lower",
             aspect="auto",
-            extent=(
-                self.bounds[0],
-                self.bounds[1],
-                self.bounds[2],
-                self.bounds[3],
-            ),
+            extent=self.bounds,
             vmin=self.vmin,
             vmax=self.vmax,
         )
