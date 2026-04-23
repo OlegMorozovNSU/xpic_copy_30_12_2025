@@ -86,7 +86,7 @@ PetscErrorCode FieldViewZAvg::calculate()
     if (!is_point_within_bounds(vg, gstart, gsize))
       continue;
 
-    for (PetscInt c = 0; c < 3; c++) {
+    for (PetscInt c = 0; c < region.dof; c++) {
 #pragma omp atomic update
       avg_arr[0][vg[Y]][vg[X]][c] +=
         arr[vg[Z]][vg[Y]][vg[X]][c] / (PetscReal)geom_nz;
