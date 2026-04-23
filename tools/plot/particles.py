@@ -7,7 +7,7 @@ const.B0 = float(const.config["Presets"][0]["setter"]["value"][2])
 const.tau = read_scalar(const.config["StepPresets"][3]["tau"])
 const.min_x = read_scalar(const.config["StepPresets"][0]["geometry"]["min"][0]) - const.Lx / 2
 const.max_x = read_scalar(const.config["StepPresets"][0]["geometry"]["max"][0]) - const.Lx / 2
-const.min_y = read_scalar(const.config["StepPresets"][0]["geometry"]["min"][1]) 
+const.min_y = read_scalar(const.config["StepPresets"][0]["geometry"]["min"][1])
 const.max_y = read_scalar(const.config["StepPresets"][0]["geometry"]["max"][1])
 const.pto = 10 * const.Ndts
 
@@ -19,7 +19,7 @@ def read(file_t, c, cd):
     return raw[:,:,c]
 
 def read_J(c): return lambda t: read(f"{const.in_dir}/{s}/J_zavg/{str(t // const.Ndts).zfill(4)}", c, 3)
-def read_rho(): return lambda t: read(f"{const.in_dir}/{s}/rho_zavg/{str(t // const.Ndts).zfill(4)}", 0, 1)
+def read_rho(): return lambda t: read(f"{const.in_dir}/{s}/rho_zavg/{str(t // const.Ndts).zfill(4)}", 0, 1) * (1 if s == "ions" else -1)
 
 vmap = np.array([-0.02, +0.02])
 vmap_s = {
@@ -48,16 +48,19 @@ def plot(i, j, title, vmap, cmap = signed_cmap):
     )
     return plot
 
-plots = []
 
 def add(i, j, title, vmap, cmap, read):
     plots.append((plot(i, j, title, vmap, cmap), read))
 
 for s in const.sorts:
+    fig.clear()
+    plots = []
+
     add(0, 0, f"$n_{s[0]}$", vmap_n, unsigned_cmap, read_rho()),
     add(1, 0, f"$J_x^{s[0]}$", vmap_s[s], signed_cmap, read_J(0)),
     add(2, 0, f"$J_y^{s[0]}$", vmap_s[s], signed_cmap, read_J(1)),
     add(3, 0, f"$J_z^{s[0]}$", vmap_s[s], signed_cmap, read_J(2)),
+    plots = np.asarray(plots)
 
     def callback(t):
         for plot, read in plots:
@@ -66,5 +69,4 @@ for s in const.sorts:
             plot.axis.plot([const.min_x, const.min_x], [const.min_y, const.max_y], ls="--", c="black")
             plot.axis.plot([const.max_x, const.max_x], [const.min_y, const.max_y], ls="--", c="black")
 
-    process_plots(fig, f"info_{s}", lambda t: f"$t/\\tau = {(t * const.dt / const.tau):.2f}$", np.asarray(plots)[:,0], callback)
-    plots.clear()
+    process_plots(fig, f"info_{s}", time_wpe, plots[:,0], callback)

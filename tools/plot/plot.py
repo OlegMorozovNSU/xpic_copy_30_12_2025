@@ -21,24 +21,19 @@ def process_plots(fig, out_subdir, time, plots, callback):
             fig.tight_layout(rect=(0, 0, 1, 0.99))
             fig.savefig(figname)
 
+            # plt.show()
+
             for plot in plots:
                 plot.clear()
 
         except FileNotFoundError:
            print(f"File not found: {figstring}")
-    
-    vid_dir = f"{const.out_dir}/video"
-    makedirs(vid_dir)
 
-    os.system(f"ffmpeg -y -i {out_dir}/%04d.png -r 15 {vid_dir}/{out_subdir}.mp4")
+    # vid_dir = f"{const.out_dir}/video"
+    # makedirs(vid_dir)
+    #
+    # os.system(f"ffmpeg -y -i {out_dir}/%04d.png -r 15 {vid_dir}/{out_subdir}.mp4")
 
-
-def process_basic(fig, out_subdir, time, plots):
-    def callback(t):
-        for plot, read in plots:
-            plot.data = read(t)
-            plot.draw()
-    process_plots(fig, out_subdir, time, np.asarray(plots)[:,0], callback)
 
 def time_wpe(t: int):
     return f"$\\omega_{{ pe }}\\,t = {t * const.dt:.3f}$"
@@ -48,3 +43,6 @@ def time_wce(t: int):
 
 def time_wci(t: int):
     return f"$\\Omega_{{ i }}\\,t = {t * const.dt * (const.B0 / const.mi_me):.3f}$"
+
+def time_tau(t: int):
+    return f"$t / \\tau = {t * const.dt / const.tau:.3f}$"
