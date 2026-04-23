@@ -5,9 +5,9 @@ from typing import Any
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # Font sizes
-titlesize = 36
-labelsize = 34
-ticksize  = 30
+titlesize = 24
+labelsize = 22
+ticksize  = 18
 
 # Utilities to set font sizes externally
 def set_titlesize(new_titlesize):
