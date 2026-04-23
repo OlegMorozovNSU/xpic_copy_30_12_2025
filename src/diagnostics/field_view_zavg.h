@@ -19,8 +19,6 @@ protected:
 
   DM da_glob;
   Vec favg;
-  Vec favg_loc;
-  Vec field_loc;
 };
 
 #endif  // SRC_DIAGNOSTICS_FIELD_VIEW_ZAVG_H

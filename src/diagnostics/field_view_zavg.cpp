@@ -32,8 +32,6 @@ PetscErrorCode FieldViewZAvg::set_data_views(const Region& reg)
   da_glob = da;
   PetscCall(World::create_local_dm(da_glob, reg, comm, &da));
   PetscCall(DMCreateGlobalVector(da, &favg));
-  PetscCall(DMCreateLocalVector(da, &favg_loc));
-  PetscCall(DMCreateLocalVector(da_glob, &field_loc));
   PetscCall(FieldView::set_data_views(reg));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
@@ -43,8 +41,6 @@ PetscErrorCode FieldViewZAvg::finalize()
   PetscFunctionBeginUser;
   PetscCall(FieldView::finalize());
   PetscCall(VecDestroy(&favg));
-  PetscCall(VecDestroy(&favg_loc));
-  PetscCall(VecDestroy(&field_loc));
   PetscCall(DMDestroy(&da));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
@@ -65,15 +61,13 @@ PetscErrorCode FieldViewZAvg::calculate()
 {
   PetscFunctionBeginUser;
   PetscCall(VecSet(favg, 0));
-  PetscCall(VecSet(favg_loc, 0));
 
   PetscReal**** arr;
   PetscReal**** avg_arr;
   World* world;
 
-  PetscCall(DMGlobalToLocal(da_glob, field, INSERT_VALUES, field_loc));
-  PetscCall(DMDAVecGetArrayDOFRead(da_glob, field_loc, &arr));
-  PetscCall(DMDAVecGetArrayDOFWrite(da, favg_loc, &avg_arr));
+  PetscCall(DMDAVecGetArrayDOFRead(da_glob, field, &arr));
+  PetscCall(DMDAVecGetArrayDOFWrite(da, favg, &avg_arr));
   PetscCall(DMGetApplicationContext(da_glob, &world));
 
   Vector3I gstart = vector_cast(region.start);
@@ -98,8 +92,7 @@ PetscErrorCode FieldViewZAvg::calculate()
     }
   }
 
-  PetscCall(DMDAVecRestoreArrayDOFRead(da_glob, field_loc, &arr));
-  PetscCall(DMDAVecRestoreArrayDOFWrite(da, favg_loc, &avg_arr));
-  PetscCall(DMLocalToGlobal(da, favg_loc, ADD_VALUES, favg));
+  PetscCall(DMDAVecRestoreArrayDOFRead(da_glob, field, &arr));
+  PetscCall(DMDAVecRestoreArrayDOFWrite(da, favg, &avg_arr));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
